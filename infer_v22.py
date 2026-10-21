@@ -144,7 +144,7 @@ def main():
     ap.add_argument('--offset', type=float, default=0.0, help='谱面offset(秒)，网格整体平移校正')
     ap.add_argument('--ch', type=int, default=96, help='模型通道数（默认96，从ckpt自动读取）')
     ap.add_argument('--n-pitch', type=int, default=46, help='pitch特征维度（默认46，训练时自动探测）')
-    ap.add_argument('--th1', type=float, default=0.4, help='有音阈值')
+    ap.add_argument('--th1', type=float, default=None, help='有音阈值（默认：v23 用 ckpt 里存的最优阈值，v22 用 0.4）')
     ap.add_argument('--th2', type=float, default=0.5, help='双押阈值')
     ap.add_argument('--notes', default=None, help='已采音符 JSON（条件采音用）')
     ap.add_argument('--notes-end', type=float, default=None, help='已采音符结束时间(秒)')
@@ -156,7 +156,7 @@ def main():
     args = ap.parse_args()
 
     global TH1, TH2
-    TH1, TH2 = args.th1, args.th2
+    TH1, TH2 = (args.th1 if args.th1 is not None else 0.4), args.th2
 
     # 加载音频
     print(f'加载音频: {args.wav}', flush=True)
@@ -211,20 +211,12 @@ def main():
 
     # 加载模型（自动从checkpoint读取超参数）
     print(f'加载模型: {args.ckpt}', flush=True)
-    d = torch.load(args.ckpt, map_location='cpu', weights_only=False)
-    if isinstance(d, dict) and 'hparams' in d:
-        hp = d['hparams']
-        n_mels = hp.get('n_mels', 81)
-        ch = hp.get('ch', args.ch)
-        n_pitch = hp.get('n_pitch', args.n_pitch)
-        print(f'从ckpt读取超参数: ch={ch}, n_pitch={n_pitch}', flush=True)
-    else:
-        n_mels, ch, n_pitch = 81, args.ch, args.n_pitch
-    model = BeatFCNContext(n_mels=n_mels, ch=ch, ctx_off=True, n_pitch=n_pitch)
-    if isinstance(d, dict) and 'model' in d:
-        model.load_state_dict(d['model'])
-    else:
-        model.load_state_dict(d)
+    from model_v23 import load_any_model  # 自动识别 v22 / v23 ckpt
+    model, hp, ck_th1 = load_any_model(args.ckpt, device='cpu', ch=args.ch, n_pitch=args.n_pitch)
+    print(f'模型结构: {hp.get("arch", "v22")}  hparams={hp}', flush=True)
+    if args.th1 is None:
+        TH1 = ck_th1 if ck_th1 is not None else 0.4
+        print(f'th1 = {TH1}（{"ckpt 里存的验证集最优阈值" if ck_th1 is not None else "默认"}）', flush=True)
     model = model.to(args.device)
     model.eval()
 

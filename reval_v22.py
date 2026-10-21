@@ -18,24 +18,10 @@ TOLS_S = [m / 1000.0 for m in TOLS_MS]
 
 
 def load_model(ckpt_path, ch=96, n_pitch=46, device='cpu'):
-    d = torch.load(ckpt_path, map_location='cpu', weights_only=False)
-    # 优先从ckpt的hparams读取模型结构
-    if isinstance(d, dict) and 'hparams' in d:
-        hp = d['hparams']
-        n_mels = hp.get('n_mels', 81)
-        ch = hp.get('ch', ch)
-        n_pitch = hp.get('n_pitch', n_pitch)
-        print(f'从ckpt读取hparams: ch={ch}, n_pitch={n_pitch}', flush=True)
-    else:
-        n_mels = 81
-    model = T.BeatFCNContext(n_mels=n_mels, ch=ch, ctx_off=True, n_pitch=n_pitch)
-    if isinstance(d, dict) and 'model' in d:
-        sd = d['model']
-    else:
-        sd = d
-    model.load_state_dict(sd)
-    model = model.to(device)
-    model.eval()
+    """自动识别 v22 / v23 ckpt（见 model_v23.load_any_model）。"""
+    from model_v23 import load_any_model
+    model, hp, _ = load_any_model(ckpt_path, device=device, ch=ch, n_pitch=n_pitch)
+    print(f'从ckpt读取hparams: {hp}', flush=True)
     return model
 
 
