@@ -131,11 +131,13 @@ def main():
     ap.add_argument('audio'); ap.add_argument('ckpt'); ap.add_argument('out')
     ap.add_argument('--nps', type=float, default=4.0); ap.add_argument('--name', default=None)
     ap.add_argument('--lam', type=float, default=0.3); ap.add_argument('--th2', type=float, default=0.6)
+    ap.add_argument('--type-bias', default='0,0,0.5,1', help='类型 logit 偏置 tap,hold,flick,drag（val 上调得）')
+    ap.add_argument('--run-fill', type=int, default=1, help='密集 onset 连段里未选中的 onset 补 Drag')
     ap.add_argument('--no-audio', action='store_true'); ap.add_argument('--save-times', action='store_true')
     a = ap.parse_args(); torch.set_num_threads(3)
     name = a.name or os.path.splitext(os.path.basename(a.audio))[0]
     y = decode(a.audio); dur = len(y) / SR
-    beats, downs, _ = detect(y); beats = beats - LAG_BEAT; downs = downs - LAG_BEAT; beats = smooth_beats(beats[beats > 0.05])
+    beats, downs, onsets = detect(y); onsets = onsets - 0.0259; beats = beats - LAG_BEAT; downs = downs - LAG_BEAT; beats = smooth_beats(beats[beats > 0.05])
     feat = features(y); model, hp, _ = load_any_model(a.ckpt)
     if hp.get('beat_guide'):
         from beat_fcn_train_v24 import guide_channels
@@ -146,9 +148,23 @@ def main():
         o = model(torch.from_numpy(feat)[None], torch.from_numpy(gt.astype(np.float32))[None], None,
                   dens=torch.tensor([math.log1p(a.nps)]))[0]
     s1 = torch.sigmoid(o[:, 0]).numpy(); s2 = torch.sigmoid(o[:, 1]).numpy()
-    ty = o[:, 2:6].argmax(-1).numpy() + 1; hd = torch.expm1(o[:, 6].clamp(0, 5)).numpy()
+    ty = (o[:, 2:6].numpy() + np.array([float(v) for v in a.type_bias.split(',')])).argmax(-1) + 1; hd = torch.expm1(o[:, 6].clamp(0, 5)).numpy()
     sc = boosted(s1, accent_curve(feat), gt, downs, a.lam, 0.05 if a.lam else 0)
     sel = topk(sc, gt, int(round(a.nps * dur)), nms)
+    n_fill = 0
+    if a.run_fill:  # 连打/滑音：相邻 onset 间隔 <120ms 且连续 ≥4 个的段，段内离已选音 >60ms 的 onset → 最近网格点补 Drag
+        on = np.sort(onsets); runs = np.zeros(len(on), bool); i = 0
+        while i < len(on):
+            j = i
+            while j + 1 < len(on) and on[j + 1] - on[j] < 0.12: j += 1
+            if j - i >= 3: runs[i:j + 1] = True
+            i = j + 1
+        st = np.sort(gt[sel]); add = []
+        for x in on[runs]:
+            k = np.searchsorted(st, x)
+            if min(abs(st[min(k, len(st) - 1)] - x), abs(st[max(k - 1, 0)] - x)) > 0.06:
+                c = int(np.argmin(abs(gt - x))); add.append(c); ty[c] = 4
+        add = np.unique(add); n_fill = len(add); sel = np.unique(np.concatenate([sel, add])).astype(int)
     t = gt[sel]; nb = np.where(t < beats[0], t / beats[0], gb[sel]); types = ty[sel].copy(); dbl = (s2[sel] >= a.th2) & (types != 4)
     # 长条：拍数取 1/4 拍，[0.5, 4] 拍，且不越过下下个音
     hb = np.clip(np.round(hd[sel] * 4) / 4, 0.5, 4.0)
@@ -172,7 +188,7 @@ def main():
     n4 = write_osu(osu, name, 'song' + ext, beats, t, ends, lanes, f'4K AUTO nps{a.nps:g}'); v = validate_osu(osu)
     st = dict(name=name, dur_s=round(dur, 1), notes=len(ch['judgeLineList'][0]['notes']), selected=int(len(sel)),
               by_type={k: int((types == c).sum()) for c, k in ((1, 'tap'), (2, 'hold'), (3, 'flick'), (4, 'drag'))}, doubles=int(dbl.sum()),
-              nps_req=a.nps, nps_out=round(len(sel) / dur, 2), lam=a.lam, osu=v, bpm_median=round(float(60 / np.median(np.diff(beats))), 1))
+              nps_req=a.nps, run_fill_drags=n_fill, nps_out=round(len(sel) / dur, 2), lam=a.lam, osu=v, bpm_median=round(float(60 / np.median(np.diff(beats))), 1))
     json.dump(st, open(f'{a.out}/stats.json', 'w'), ensure_ascii=False, indent=1)
     if a.save_times: np.savez(f'{a.out}/sel.npz', t=t, types=types)
     if not a.no_audio:
