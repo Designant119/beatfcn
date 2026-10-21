@@ -31,7 +31,7 @@ for spec in a.ckpt:
     rt, _ = evaluate(m, te, ti, 'cpu', th_grid=[th])
     dt = time.time() - t
     r = rt[th]
-    row = dict(name=name, th1=th, val_strict=rv[th]['strict'], test_strict=r['strict'], test_loose=r['loose'],
+    row = dict(name=name, th1=th, val_strict=rv[th]['strict'], test_strict=r['strict'], test_f20=r['f20'], test_loose=r['loose'], val_f20=rv[th]['f20'],
                blind_strict=r['s_b'], cond_strict=r['s_c'], dprec=r['dprec'], drec=r['drec'],
                infer_s_per_song=dt / max(len(ti), 1) / 2, params=sum(p.numel() for p in m.parameters()))
     print(json.dumps(row, ensure_ascii=False), flush=True)
