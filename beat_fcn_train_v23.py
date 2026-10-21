@@ -111,11 +111,18 @@ def make_eval_set(songs, max_songs, seed, max_frames):
     return out
 
 
-def predict_scores(model, mel, grid, notes, device):
+def song_density(grid, label):
+    """难度标量：log1p(音符数/秒)。"""
+    dur = max(float(grid[-1] - grid[0]), 1.0) if len(grid) > 1 else 1.0
+    return math.log1p(float((np.asarray(label) > 0).sum()) / dur)
+
+
+def predict_scores(model, mel, grid, notes, device, dens=None):
     M = torch.from_numpy(np.ascontiguousarray(mel, dtype=np.float32)).unsqueeze(0).to(device)
     G = torch.from_numpy(np.asarray(grid, np.float32)).unsqueeze(0).to(device)
     N = torch.from_numpy(notes.astype(np.float32)).unsqueeze(0).to(device)
-    o1, o2 = model(M, G, N)
+    D = None if dens is None else torch.tensor([dens], dtype=torch.float32, device=device)
+    o1, o2 = model(M, G, N, dens=D)
     return torch.sigmoid(o1)[0].float().cpu().numpy(), torch.sigmoid(o2)[0].float().cpu().numpy()
 
 
@@ -136,7 +143,7 @@ def evaluate(model, songs, idxs, device, cond_frac=0.3, th_grid=TH_GRID, th2=0.5
             if mode == 'c':
                 mpt = int(Gc * cond_frac)
                 notes[:mpt] = gt[:mpt]
-            s1, s2 = predict_scores(model, mel, grid, notes, device)
+            s1, s2 = predict_scores(model, mel, grid, notes, device, song_density(grid, gt))
             g = grid[mpt:]; gt_m = gt[mpt:] > 0
             for th in th_grid:
                 hit = s1[mpt:] >= th
@@ -163,7 +170,7 @@ def build_model(hp):
     return BeatTokenNet(n_mels=hp.get('n_mels', 81), n_pitch=hp.get('n_pitch', 46), stem_ch=hp.get('stem_ch', 48),
                         d_model=hp.get('d_model', 96), n_layers=hp.get('n_layers', 4), nhead=hp.get('nhead', 4),
                         cells_per_token=hp.get('cells_per_token', 16), samples_per_token=hp.get('samples_per_token', 16),
-                        stem=hp.get('stem', 'sep'))
+                        stem=hp.get('stem', 'sep'), cond_density=hp.get('cond_density', False))
 
 
 def main():
@@ -195,6 +202,8 @@ def main():
     ap.add_argument('--layers', type=int, default=4)
     ap.add_argument('--cells-per-token', type=int, default=16)
     ap.add_argument('--samples-per-token', type=int, default=16)
+    ap.add_argument('--cond-density', action='store_true', help='难度/密度条件输入')
+    ap.add_argument('--no-epoch-ckpt', action='store_true', help='不写逐轮 ckpt（省 inode）')
     ap.add_argument('--compile', action='store_true', help='torch.compile（GPU 上可再提速）')
     ap.add_argument('--time-budget', type=float, default=None, help='训练总时长上限（秒），到点评估并停止')
     args = ap.parse_args()
@@ -220,7 +229,7 @@ def main():
 
     hp = dict(n_mels=81, n_pitch=n_pitch, stem_ch=args.stem_ch, d_model=args.d_model, n_layers=args.layers,
               nhead=4, cells_per_token=args.cells_per_token, samples_per_token=args.samples_per_token,
-              stem=args.stem, arch='v23')
+              stem=args.stem, arch='v23', cond_density=args.cond_density)
     model = build_model(hp).to(device)
     print(f'参数量 {sum(p.numel() for p in model.parameters()):,}  hparams={hp}', flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -271,7 +280,12 @@ def main():
                 elif Gc > 10:
                     notes[b, random.randint(int(Gc * 0.02), int(Gc * 0.9)):Gc] = -1
             with torch.autocast(device.type, dtype=amp_dtype, enabled=use_amp):
-                o1, o2 = fwd(M, G, notes, grid_mask=mask > 0)
+                dens = None
+                if args.cond_density:
+                    Lb = (L > 0).float() * mask; Gx = G.masked_fill(mask == 0, -1e9)
+                    dur = (Gx.max(1).values - G.masked_fill(mask == 0, 1e9).min(1).values).clamp(min=1.0)
+                    dens = torch.log1p(Lb.sum(1) / dur)
+                o1, o2 = fwd(M, G, notes, grid_mask=mask > 0, dens=dens)
             loss_mask = mask * (notes == -1).float()
             loss = density_weighted_loss(o1.float(), o2.float(), L, w_cls, args.w_sparse, args.w_dense,
                                          mask=loss_mask, density_mask=mask)
@@ -302,7 +316,8 @@ def main():
         if improved:
             torch.save(state, f'beat_fcn_best_{args.tag}.pt')
         torch.save(dict(state, opt=opt.state_dict(), sched=sched.state_dict()), ck)
-        torch.save(dict(model=model.state_dict(), hparams=hp, th1=th), f'ckpt_{args.tag}_ep{ep}.pt')
+        if not args.no_epoch_ckpt:
+            torch.save(dict(model=model.state_dict(), hparams=hp, th1=th), f'ckpt_{args.tag}_ep{ep}.pt')
         json.dump(dict(best=best, hist=hist), open(f'ckpt_{args.tag}.json', 'w'), indent=1)
         if stop[0] or (args.time_budget and time.time() - t_train0 > args.time_budget):
             print('[停止] 到达时间预算或收到停止信号', flush=True); break

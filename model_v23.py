@@ -50,8 +50,9 @@ def sinusoid(n, d, device):
 
 class BeatTokenNet(nn.Module):
     def __init__(self, n_mels=81, n_pitch=46, stem_ch=48, d_model=96, n_layers=4, nhead=4,
-                 cells_per_token=16, samples_per_token=16, n_press=2, dropout=0.1, stem='sep'):
+                 cells_per_token=16, samples_per_token=16, n_press=2, dropout=0.1, stem='sep', cond_density=False):
         super().__init__()
+        self.dens_proj = nn.Linear(1, d_model) if cond_density else None  # 难度条件：log1p(音符/秒)
         self.n_press = n_press
         self.K = cells_per_token
         self.S = samples_per_token
@@ -85,7 +86,7 @@ class BeatTokenNet(nn.Module):
         oh = oh * valid.unsqueeze(-1)
         return torch.cat([oh, valid.unsqueeze(-1)], -1)  # (B,G,nd)
 
-    def forward(self, mel, grid, notes=None, grid_mask=None, src_key_padding_mask=None):
+    def forward(self, mel, grid, notes=None, grid_mask=None, src_key_padding_mask=None, dens=None):
         """mel (B,T,81+n_pitch)；grid (G,) 或 (B,G) 秒；notes (B,G) 0/1/2 或 -1(遮罩)。
         grid_mask (B,G) True=有效格（batch padding 用；None=全有效）。返回 o1,o2 (B,G)。"""
         B, T, _ = mel.shape
@@ -121,6 +122,8 @@ class BeatTokenNet(nn.Module):
         pooled = pooled.view(B, C, N, S).permute(0, 2, 3, 1).reshape(B, N, S * C)
         nh = self.notes_onehot(notes)                             # (B,Gp,nd)
         x = self.pool(pooled) + self.note_proj(nh.view(B, N, -1))
+        if self.dens_proj is not None and dens is not None:
+            x = x + self.dens_proj(dens.to(x.dtype).view(B, 1, 1))
         x = self.norm_in(x + sinusoid(N, x.shape[-1], dev).unsqueeze(0))
         tok_mask = grid_mask.view(B, N, K).any(-1)                # (B,N) True=有效
         x = self.transformer(x, src_key_padding_mask=~tok_mask)
@@ -142,7 +145,8 @@ def load_any_model(ckpt_path, device='cpu', ch=96, n_pitch=46):
         m = BeatTokenNet(n_mels=hp.get('n_mels', 81), n_pitch=hp.get('n_pitch', 46), stem_ch=hp.get('stem_ch', 48),
                          d_model=hp.get('d_model', 96), n_layers=hp.get('n_layers', 4), nhead=hp.get('nhead', 4),
                          cells_per_token=hp.get('cells_per_token', 16),
-                         samples_per_token=hp.get('samples_per_token', 16), stem=hp.get('stem', 'sep'))
+                         samples_per_token=hp.get('samples_per_token', 16), stem=hp.get('stem', 'sep'),
+                         cond_density=hp.get('cond_density', False))
     else:
         from model import BeatFCNContext
         m = BeatFCNContext(n_mels=hp.get('n_mels', 81), ch=hp.get('ch', ch), ctx_off=True,

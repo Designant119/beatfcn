@@ -46,3 +46,13 @@
 - 解读：仅修正评估标签 offset，v23b ±20ms 就从 0.26→0.54 → 原来大半"错误"是谱面 offset 噪声；在清洗数据上训练再 +0.07。
 - 注意：offset 用真值音符+音频估计；推理时网格 offset 需由用户/谱面或节拍跟踪提供，需对齐音频。
 - box 磁盘 inode 用满（其他工作区 node_modules 占用 /workspace/qa、/workspace/amp），feat_cache_clean 的 test 缓存写不进，评估改为不缓存。
+
+## 20:15 重设计：Layer 1 定时（gen/layer1.py，bench/layer1_metrics.json；venv_bt = torch2.11+torchaudio+beat_this+librosa）
+- beat_this(final0, CPU, 无 DBN) 节拍 + librosa onset。常数滞后在 val 上标定：节拍 +13ms、onset +26ms（相对修正后谱面音符），test 只套用。
+- 候选召回 @±20ms（中位数，test 36 首 / val 36 首）：
+  onset 0.71（1.27 个/音符）；1/16 网格 0.73（1.78）；1/16+1/12 网格 0.79（2.68）；onset+1/16 0.87（2.99）；
+  **onset+1/16+1/12 0.903（3.87 个/音符）** ← 达到 ≥0.9 目标。val 同口径 0.895（4.19）。
+- 节拍 vs 谱面整拍（谱面拍相位按音符最多的 idx%32 选）：F@70ms test 0.71 / val 0.77；允许半/倍速 0.86 / 0.81；F@20ms 0.62/0.60。
+  变速歌（每段步长比>1.02）test 3 首、val 3 首，F@70(含半倍速) 0.74 / 0.78。
+- Layer 2 训练中：v23dens = v23clean + 密度条件（log1p 音符/秒 → token 偏置），--no-epoch-ckpt。
+- 端到端 gen/make_chart.py：已通过往返测试（生成 chart.json 用 chart_utils.parse_chart 解析回秒，557 音最大误差 0.005ms）。未在 Phira App 内实测加载。
