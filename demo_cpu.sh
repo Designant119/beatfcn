@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CPU 冒烟测试：下载少量谱面 → 提取特征 → 小模型训练 3 轮 → reval → 推理一首 test 歌
-# 只证明全流程能跑通，不是正式训练（正式训练需要 GPU，见 技术交接文档_AutoDL版.md）
+# 只证明全流程能跑通，不是正式训练（正式训练建议用 GPU）
 # 用法: bash demo_cpu.sh   （需要 python3、ffmpeg、curl；约 5-10 分钟，内存 ≥8GB）
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
