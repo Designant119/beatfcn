@@ -98,7 +98,7 @@ def check_files():
 def check_deps():
     """检查Python依赖"""
     print(f"{C.YELLOW}[检查] Python依赖...{C.END}")
-    deps = ['numpy', 'librosa', 'soundfile', 'scipy']
+    deps = ['numpy', 'scipy']  # 音频解码用系统 ffmpeg，不需要 librosa/soundfile
     missing = []
     for dep in deps:
         try:

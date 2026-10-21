@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """从 .pez 谱面批量提取 pitch/打击特征（46 维）
 与 grid_npz_v13 的 mel 帧对齐：SR=22050, N_FFT=1024, HOP=256
-纯 numpy + soundfile + scipy（不用 librosa；HPSS 用 numpy 中值滤波实现）
+纯 numpy + scipy + ffmpeg 解码（不用 librosa；HPSS 用 numpy 中值滤波实现）
 
 输出特征（46 维，全部与 mel 同帧定义，中心对齐窗口）：
   chroma_n  12  半音级能量占比（L1 归一化）
