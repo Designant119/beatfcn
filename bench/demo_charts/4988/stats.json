@@ -1,0 +1,15 @@
+{
+ "name": "冬雨_[IN14]",
+ "dur_s": 133.5,
+ "beats": 377,
+ "bpm_median": 176.5,
+ "notes": 619,
+ "taps": 534,
+ "doubles": 85,
+ "nps_req": 4.0,
+ "nps_out": 4.0,
+ "th": 0.75,
+ "f20_vs_chart": 0.67,
+ "f50_vs_chart": 0.67,
+ "chart_notes_cells": 534
+}

@@ -51,6 +51,9 @@ def main():
     ap.add_argument('--nps', type=float, default=4.0, help='目标密度（音符/秒）')
     ap.add_argument('--th', type=float, default=None); ap.add_argument('--name', default=None)
     ap.add_argument('--no-audio-in-zip', action='store_true')
+    ap.add_argument('--save-times', action='store_true')
+    ap.add_argument('--th2', type=float, default=0.6, help='双押阈值（test: 0.6 → P0.46/R0.29）')
+    ap.add_argument('--exact-density', type=int, default=1, help='1=按目标密度取 top-K；0=用阈值（密度条件只做软控制）')
     a = ap.parse_args(); torch.set_num_threads(3)
     name = a.name or os.path.splitext(os.path.basename(a.audio))[0]
     y = decode(a.audio); dur = len(y) / SR
@@ -64,8 +67,11 @@ def main():
     m = (gt >= 0) & (gt < dur); gb, gt = gb[m], gt[m]
     s1, s2 = score(model, feat, gt, math.log1p(a.nps))
     th = a.th if a.th is not None else (th_ck or 0.5)
-    sel = select(s1, gt, th)
-    nb = gb[sel]; dbl = s2[sel] >= 0.5
+    if a.exact_density:  # 按分数取前 K 个（NMS 后），K = 目标密度×时长：密度精确可控
+        sel = select(s1, gt, 0.0); sel = np.sort(sel[np.argsort(-s1[sel])][:int(round(a.nps * dur))])
+    else:
+        sel = select(s1, gt, th)
+    nb = gb[sel]; dbl = s2[sel] >= a.th2
     # 拍号 < 1 的音（首拍前）按首段 bpm：拍 0..1 映射 t∈[0, beats[0]]，与 BPM 表一致
     nb = np.where(gt[sel] < beats[0], gt[sel] / beats[0], nb)
     os.makedirs(a.out, exist_ok=True)
@@ -85,7 +91,7 @@ def main():
         with zipfile.ZipFile(f'{a.out}/{name}.pez', 'w') as z:
             for f in ('chart.json', 'info.yml', 'bg.png'): z.write(f'{a.out}/{f}', f)
             z.write(a.audio, 'song' + ext)
-    np.save(f'{a.out}/note_times.npy', gt[sel])
+    np.save(f'{a.out}/note_times.npy', gt[sel]) if a.save_times else None
     print(json.dumps(stats, ensure_ascii=False))
 
 if __name__ == '__main__':

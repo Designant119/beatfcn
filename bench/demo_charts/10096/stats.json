@@ -1,0 +1,15 @@
+{
+ "name": "Crisscross_[IN15]",
+ "dur_s": 130.0,
+ "beats": 267,
+ "bpm_median": 130.4,
+ "notes": 613,
+ "taps": 578,
+ "doubles": 35,
+ "nps_req": 4.45,
+ "nps_out": 4.45,
+ "th": 0.75,
+ "f20_vs_chart": 0.638,
+ "f50_vs_chart": 0.723,
+ "chart_notes_cells": 578
+}

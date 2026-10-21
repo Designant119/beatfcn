@@ -86,3 +86,10 @@ CPU / 小显存调试可加 `--crop-frames 3000 --ch 32`（限制训练片段长
 | `train_web.py` / `train_helper.py` | 网页 / 命令行训练控制台 |
 | `split_full128_final.json` | **唯一有效**的数据划分 |
 | `archive/` | 历史文件（旧 split 等），不要用 |
+
+## 自动出谱（重设计，实验性）
+```
+# venv_bt: torch==2.11 torchaudio==2.11 (CPU) + beat_this + librosa + pillow
+python gen/make_chart.py song.mp3 beat_fcn_best_v23dens.pt out_dir --nps 4 --name 曲名
+```
+音频 → beat_this 节拍（支持变速，每拍一段 BPM）→ 1/32 拍网格 → v23(密度条件) 选音（top-K 精确密度）→ RPE 谱面（单条静止判定线，Tap 左右交替，双押左右各一）+ info.yml，打包 .pez。评估与数字见 bench/NOTES.md。

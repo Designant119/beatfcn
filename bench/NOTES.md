@@ -56,3 +56,13 @@
   变速歌（每段步长比>1.02）test 3 首、val 3 首，F@70(含半倍速) 0.74 / 0.78。
 - Layer 2 训练中：v23dens = v23clean + 密度条件（log1p 音符/秒 → token 偏置），--no-epoch-ckpt。
 - 端到端 gen/make_chart.py：已通过往返测试（生成 chart.json 用 chart_utils.parse_chart 解析回秒，557 音最大误差 0.005ms）。未在 Phira App 内实测加载。
+
+## 20:50 Layer 2 选音 + 端到端（gen/selector.py, gen/make_chart.py, bench/layer2_metrics.json）
+- v23dens：v23clean + 密度条件，清洗数据，d96，3 线程，约 25 ep（被 timeout 3300s 截断），best val f20 0.601（谱面网格口径）。
+- 选音评估（给定真值密度，NMS 40ms，阈值在 val 上选）：test ±20ms F1 谱面网格 0.673 / **自动网格(beat_this 1/32) 0.644**，自动网格 ±50ms 0.711；val 0.647/0.635。
+- 密度可控性（test，请求 = 真值×0.5…2）：Pearson 0.83 / Spearman 0.85，但主要来自歌间差异；歌内 产出/真值 中位 1.00/1.13/1.25/1.49/1.65 → 软条件很弱。
+  所以 make_chart 默认 --exact-density 1：NMS 后按分数取 top-K（K=目标音符/秒×时长），密度精确命中。
+- 双押阈值 th2（test）：0.5→P0.40/R0.41，0.6→0.46/0.29，0.7→0.55/0.18；默认 0.6。
+- demo（bench/demo_charts/<id>，不含音频，版权原因；用原曲音频放进 zip 命名 song.<ext> 即可）：
+  74587 シャルル ±20ms 0.653；10096 Crisscross 0.638；4988 冬雨 0.670（请求密度=原谱密度）。
+- 未验证：Phira App 实际导入/游玩手感；重复段落一致性未测；只有 Tap，无 Hold/Drag/Flick。
