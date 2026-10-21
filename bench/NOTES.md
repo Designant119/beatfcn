@@ -78,3 +78,14 @@
   失误：按 f20 存最佳 → 存下的是 ep1（类型头几乎未训练）。已改为按 f20+0.5×类型宏F 选。
 - 漏音分析（v23dens，自动网格 top-K，test，accent_v23dens.json）：重音 top25% 音符召回 0.878；λ=0.3 重音先验 → 0.931，整体 F1 0.644→0.652、召回 0.683→0.689。
 - v24b：+GenéLive 式节拍引导输入（beat_this 下拍=2/拍=1，±1 帧）+ 重音曲线通道，stem 新通道零初始化，从 v23dens 热启动。train 全部 296 首已跑 beat_this（gen/detect_all.py）。
+
+## 22:05 v24b 多类型 + 重音 + 4K 出谱（demo 在 /workspace/demo_out/v24_<id>/）
+- v24b（节拍引导+重音通道）中途 ckpt（约 ep10，训练仍在跑）：自动网格 top-K + λ0.3 重音先验，test onset ±20ms F1 0.657。
+- 类型 P/R（test，±20ms 同类型匹配，bench/types_eval_v24b.json）：
+  argmax：tap 0.454/0.640，hold 0.194/0.211，flick 0.120/0.002，drag 0.051/0.007
+  val 调 logit 偏置 [0,0,.5,1]：tap 0.505/0.420，hold 0.209/0.147，flick 0.097/0.108，drag 0.092/0.139（宏F 0.211）
+  +连打→drag 启发式：drag 0.109/0.198，宏F 0.199（没更好）。类型仍弱，主要受 onset F1≈0.65 限制，类型本身也难。
+- 连打补 Drag（onset 间隔<120ms 连续≥4、离已选音>60ms）：test F1 0.653→0.652，drag 音符召回 0.409→0.416，重音 top25% 召回 0.911→0.919，提升很小。
+- 节拍平滑（beat_this 20ms 量化，±4 拍线性回归）：test 节拍 F@20 0.618→0.644；Crisscross 中位 BPM 130.4→128.0（原曲 128）。
+- demo（请求密度=原谱含 drag 的密度）：シャルル F1@20 0.743，Crisscross 0.649，冬雨 0.753。Phira zip + 4K .osz 都带音频，仅在 /workspace/demo_out（不进 git）；谱面文件拷贝在 bench/demo_charts_v24。
+- 4K .osu：自检通过（v14 头、Mode 3、CircleSize 4、车道 0-3、时间单调、同道无重叠、长条 end>start、红线 beatLength>0）；未在 osu! 客户端实测。

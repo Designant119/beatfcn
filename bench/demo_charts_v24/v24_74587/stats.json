@@ -1,0 +1,22 @@
+{
+ "name": "BeatFCN_v24_シャルル",
+ "dur_s": 102.6,
+ "notes": 645,
+ "selected": 538,
+ "by_type": {
+  "tap": 329,
+  "hold": 30,
+  "flick": 3,
+  "drag": 176
+ },
+ "doubles": 107,
+ "nps_req": 4.86,
+ "run_fill_drags": 39,
+ "nps_out": 5.24,
+ "lam": 0.3,
+ "osu": {
+  "objects": 645,
+  "timing_points": 10
+ },
+ "bpm_median": 145.2
+}
