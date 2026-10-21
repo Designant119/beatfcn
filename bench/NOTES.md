@@ -28,3 +28,10 @@
 - 吞吐：d96/2 线程 ≈0.35 s/首/epoch，d128/3 线程 ≈0.50 s/首/epoch → 全量 11373 首 ≈66–95 min/epoch，30 epoch ≈ 33–48 h（CPU，限 3 线程）。
 - 全量数据：约 75GB 下载（磁盘剩 72GB，不够，需清理/扩容）；按交接文档提取 mel+pitch 8 进程 5–7h，限 3 进程约 15–20h。
 - 未做（时间不够）：子格偏移头（oracle 证明不需要）、focal loss、onset 峰值特征。
+
+## 17:45 offset 清洗（bench/offset_clean.py，报告 bench/offset_report.json）
+- 方法：每谱面音符时刻 vs 音频 onset 包络（mel 正向差分，去局部均值）互相关，±200ms，2ms 步；修正 grid=grid+offset（标签不变），输出 /workspace/bench/grid_npz_clean（原 grid_npz_full128 保留）。
+- 分布（307 谱面）：中位 0ms，|offset| p50 20ms、p90 71ms，48% 谱面 |offset|>20ms。音符落在音频 onset 峰 ±20ms 内比例 0.403 → 0.695（注意：该指标是优化目标，偏乐观）。
+- 丢弃 11 个（low_conf 5 / low_agree 4 / 密度极端 2），剩 296（文件改名 .npz.dropped）。无谱师 ID 字段，未做按谱师统计；无精确重复。
+- 标签噪声上限重测（11 对同名不同谱师）：不同上传的音频本身有 0–650ms 前导差，先用音频包络互相关对齐音频，再比：
+  ±20ms F1 原 offset 中位 0.615/均值 0.531 → 修正 offset 后中位 0.703/均值 0.711。同音频同 offset 的对（Collapsing World 0.77、cyanine 0.83）说明剩下的是"放哪些音"的内容分歧。

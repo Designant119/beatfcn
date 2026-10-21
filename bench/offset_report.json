@@ -1,0 +1,3072 @@
+{
+ "10096_Crisscross_[IN15]": {
+  "n": 578,
+  "offset_ms": 44.0,
+  "conf": 3.48,
+  "edge": false,
+  "agree20_before": 0.104,
+  "agree20_after": 0.578,
+  "nps": 4.45,
+  "drop": null
+ },
+ "10116_Sakura_fubuki_[IN15]": {
+  "n": 366,
+  "offset_ms": 40.0,
+  "conf": 3.63,
+  "edge": false,
+  "agree20_before": 0.005,
+  "agree20_after": 0.746,
+  "nps": 3.13,
+  "drop": null
+ },
+ "10249_Raison_d'être～交差する宿命～_[D61408337]": {
+  "n": 301,
+  "offset_ms": -8.0,
+  "conf": 3.08,
+  "edge": false,
+  "agree20_before": 0.777,
+  "agree20_after": 0.86,
+  "nps": 2.31,
+  "drop": null
+ },
+ "11473_キマグレ☆テキトウ・アンサンブル→コミュニケーション_ReDive!_[IN15+]": {
+  "n": 1006,
+  "offset_ms": 0.0,
+  "conf": 2.63,
+  "edge": false,
+  "agree20_before": 0.686,
+  "agree20_after": 0.686,
+  "nps": 7.42,
+  "drop": null
+ },
+ "11586_KING_[IN15]": {
+  "n": 526,
+  "offset_ms": 116.0,
+  "conf": 3.61,
+  "edge": false,
+  "agree20_before": 0.008,
+  "agree20_after": 0.829,
+  "nps": 3.9,
+  "drop": null
+ },
+ "11701_SuddeИDeath_[4]": {
+  "n": 2762,
+  "offset_ms": 0.0,
+  "conf": 3.46,
+  "edge": false,
+  "agree20_before": 0.299,
+  "agree20_after": 0.299,
+  "nps": 23.02,
+  "drop": "extreme_density"
+ },
+ "11907_Dogbite_[IN.15]": {
+  "n": 391,
+  "offset_ms": 4.0,
+  "conf": 4.15,
+  "edge": false,
+  "agree20_before": 0.9,
+  "agree20_after": 0.9,
+  "nps": 3.24,
+  "drop": null
+ },
+ "12250_絶望性：ヒーロー治療薬_[IN14]": {
+  "n": 928,
+  "offset_ms": -4.0,
+  "conf": 2.35,
+  "edge": false,
+  "agree20_before": 0.421,
+  "agree20_after": 0.438,
+  "nps": 4.58,
+  "drop": null
+ },
+ "12366_S.A.T.E.L.L.I.T.E._[AT16]": {
+  "n": 491,
+  "offset_ms": 0.0,
+  "conf": 3.6,
+  "edge": false,
+  "agree20_before": 0.737,
+  "agree20_after": 0.737,
+  "nps": 3.42,
+  "drop": null
+ },
+ "12572_我和你_[IN11]": {
+  "n": 234,
+  "offset_ms": 86.0,
+  "conf": 3.53,
+  "edge": false,
+  "agree20_before": 0.077,
+  "agree20_after": 0.799,
+  "nps": 2.8,
+  "drop": null
+ },
+ "12705_My_Sunset_[IN14]": {
+  "n": 1006,
+  "offset_ms": 34.0,
+  "conf": 2.88,
+  "edge": false,
+  "agree20_before": 0.289,
+  "agree20_after": 0.32,
+  "nps": 3.08,
+  "drop": null
+ },
+ "13096_The_Lost_Aria_[IN14]": {
+  "n": 849,
+  "offset_ms": 42.0,
+  "conf": 3.83,
+  "edge": false,
+  "agree20_before": 0.002,
+  "agree20_after": 0.938,
+  "nps": 3.61,
+  "drop": null
+ },
+ "13316_《Ж》_[HANDSTREAM32]": {
+  "n": 1148,
+  "offset_ms": -2.0,
+  "conf": 2.55,
+  "edge": false,
+  "agree20_before": 0.537,
+  "agree20_after": 0.538,
+  "nps": 7.61,
+  "drop": null
+ },
+ "13669_Up_To_The_Cloud_[EX13]": {
+  "n": 374,
+  "offset_ms": -18.0,
+  "conf": 4.27,
+  "edge": false,
+  "agree20_before": 0.545,
+  "agree20_after": 0.813,
+  "nps": 2.17,
+  "drop": null
+ },
+ "13867_TiamaTF_minor_[IN16]": {
+  "n": 711,
+  "offset_ms": 0.0,
+  "conf": 2.83,
+  "edge": false,
+  "agree20_before": 0.678,
+  "agree20_after": 0.678,
+  "nps": 4.62,
+  "drop": null
+ },
+ "14071_POTENTIAL_[AT15]": {
+  "n": 823,
+  "offset_ms": 2.0,
+  "conf": 3.45,
+  "edge": false,
+  "agree20_before": 0.682,
+  "agree20_after": 0.68,
+  "nps": 5.9,
+  "drop": null
+ },
+ "1432_Alteregoism_[AT16]": {
+  "n": 876,
+  "offset_ms": 0.0,
+  "conf": 3.08,
+  "edge": false,
+  "agree20_before": 0.808,
+  "agree20_after": 0.808,
+  "nps": 5.57,
+  "drop": null
+ },
+ "14400_不眠之夜_WHITE_NIGHT_[IN13]": {
+  "n": 389,
+  "offset_ms": 82.0,
+  "conf": 3.52,
+  "edge": false,
+  "agree20_before": 0.201,
+  "agree20_after": 0.699,
+  "nps": 2.78,
+  "drop": null
+ },
+ "14480_≠_(Over_Limit)_[AT16]": {
+  "n": 1286,
+  "offset_ms": 0.0,
+  "conf": 2.75,
+  "edge": false,
+  "agree20_before": 0.66,
+  "agree20_after": 0.66,
+  "nps": 7.93,
+  "drop": null
+ },
+ "14553_Color_your_night_[NIGHT5]": {
+  "n": 101,
+  "offset_ms": -10.0,
+  "conf": 1.98,
+  "edge": false,
+  "agree20_before": 0.436,
+  "agree20_after": 0.386,
+  "nps": 1.54,
+  "drop": "low_conf"
+ },
+ "14693_First_Town_Of_This_Journey_[21]": {
+  "n": 1622,
+  "offset_ms": -20.0,
+  "conf": 3.07,
+  "edge": false,
+  "agree20_before": 0.342,
+  "agree20_after": 0.641,
+  "nps": 7.27,
+  "drop": null
+ },
+ "14867_フォーリーバンジー_[IN14]": {
+  "n": 822,
+  "offset_ms": -28.0,
+  "conf": 3.03,
+  "edge": false,
+  "agree20_before": 0.054,
+  "agree20_after": 0.783,
+  "nps": 4.56,
+  "drop": null
+ },
+ "14910_Showdown_[IN13]": {
+  "n": 472,
+  "offset_ms": 76.0,
+  "conf": 3.94,
+  "edge": false,
+  "agree20_before": 0.055,
+  "agree20_after": 0.837,
+  "nps": 2.25,
+  "drop": null
+ },
+ "15781_宵々古今_[IN15]": {
+  "n": 940,
+  "offset_ms": -102.0,
+  "conf": 3.57,
+  "edge": false,
+  "agree20_before": 0.244,
+  "agree20_after": 0.341,
+  "nps": 3.65,
+  "drop": null
+ },
+ "15797_Ouvertüre_[4]": {
+  "n": 957,
+  "offset_ms": 0.0,
+  "conf": 3.01,
+  "edge": false,
+  "agree20_before": 0.654,
+  "agree20_after": 0.654,
+  "nps": 6.76,
+  "drop": null
+ },
+ "16081_S.L.I._[IN14]": {
+  "n": 400,
+  "offset_ms": 22.0,
+  "conf": 3.66,
+  "edge": false,
+  "agree20_before": 0.287,
+  "agree20_after": 0.875,
+  "nps": 2.7,
+  "drop": null
+ },
+ "16182_Stasis_[ANOTHER32]": {
+  "n": 1068,
+  "offset_ms": -2.0,
+  "conf": 2.38,
+  "edge": false,
+  "agree20_before": 0.725,
+  "agree20_after": 0.724,
+  "nps": 6.9,
+  "drop": null
+ },
+ "16263_NÎTROGLØBE_[IN14]": {
+  "n": 385,
+  "offset_ms": 22.0,
+  "conf": 3.58,
+  "edge": false,
+  "agree20_before": 0.151,
+  "agree20_after": 0.8,
+  "nps": 3.51,
+  "drop": null
+ },
+ "162_Crossing_Delta_[AT16]": {
+  "n": 833,
+  "offset_ms": 20.0,
+  "conf": 2.87,
+  "edge": false,
+  "agree20_before": 0.411,
+  "agree20_after": 0.88,
+  "nps": 6.11,
+  "drop": null
+ },
+ "16758_How_To_Make_音ゲ～曲!_[IN15]": {
+  "n": 705,
+  "offset_ms": 48.0,
+  "conf": 3.48,
+  "edge": false,
+  "agree20_before": 0.055,
+  "agree20_after": 0.833,
+  "nps": 4.71,
+  "drop": null
+ },
+ "167_Wildfire_[IN15]": {
+  "n": 982,
+  "offset_ms": 18.0,
+  "conf": 3.12,
+  "edge": false,
+  "agree20_before": 0.667,
+  "agree20_after": 0.916,
+  "nps": 4.92,
+  "drop": null
+ },
+ "16899_马云你听teto说_[MY?]": {
+  "n": 125,
+  "offset_ms": 38.0,
+  "conf": 3.1,
+  "edge": false,
+  "agree20_before": 0.016,
+  "agree20_after": 0.32,
+  "nps": 6.1,
+  "drop": null
+ },
+ "17086_龙武同舟~Theme_[IN14]": {
+  "n": 414,
+  "offset_ms": 22.0,
+  "conf": 4.37,
+  "edge": false,
+  "agree20_before": 0.21,
+  "agree20_after": 0.787,
+  "nps": 3.15,
+  "drop": null
+ },
+ "17094_Peer_Gynt_[IN15]": {
+  "n": 611,
+  "offset_ms": 62.0,
+  "conf": 3.36,
+  "edge": false,
+  "agree20_before": 0.011,
+  "agree20_after": 0.725,
+  "nps": 4.32,
+  "drop": null
+ },
+ "17409_Quo_Vadis_[IN14]": {
+  "n": 816,
+  "offset_ms": 24.0,
+  "conf": 3.13,
+  "edge": false,
+  "agree20_before": 0.141,
+  "agree20_after": 0.778,
+  "nps": 6.05,
+  "drop": null
+ },
+ "17502_微茫_[IN13]": {
+  "n": 230,
+  "offset_ms": -4.0,
+  "conf": 3.56,
+  "edge": false,
+  "agree20_before": 0.917,
+  "agree20_after": 0.926,
+  "nps": 1.86,
+  "drop": null
+ },
+ "17583_Against_the_Grain_[15]": {
+  "n": 851,
+  "offset_ms": 24.0,
+  "conf": 3.19,
+  "edge": false,
+  "agree20_before": 0.192,
+  "agree20_after": 0.894,
+  "nps": 3.57,
+  "drop": null
+ },
+ "17611_Random_[AT15]": {
+  "n": 489,
+  "offset_ms": 70.0,
+  "conf": 3.6,
+  "edge": false,
+  "agree20_before": 0.137,
+  "agree20_after": 0.677,
+  "nps": 3.59,
+  "drop": null
+ },
+ "17675_Credits_[MASTER14]": {
+  "n": 592,
+  "offset_ms": 68.0,
+  "conf": 3.6,
+  "edge": false,
+  "agree20_before": 0.23,
+  "agree20_after": 0.635,
+  "nps": 6.0,
+  "drop": null
+ },
+ "17825_♿Latent_Kingdom♿_[♿Lv.?]": {
+  "n": 929,
+  "offset_ms": -2.0,
+  "conf": 3.51,
+  "edge": false,
+  "agree20_before": 0.626,
+  "agree20_after": 0.616,
+  "nps": 5.64,
+  "drop": null
+ },
+ "1845_枝江_[5]": {
+  "n": 280,
+  "offset_ms": -6.0,
+  "conf": 3.67,
+  "edge": false,
+  "agree20_before": 0.675,
+  "agree20_after": 0.629,
+  "nps": 1.43,
+  "drop": null
+ },
+ "18576_嬢王_[AT16]": {
+  "n": 703,
+  "offset_ms": 14.0,
+  "conf": 3.26,
+  "edge": false,
+  "agree20_before": 0.647,
+  "agree20_after": 0.751,
+  "nps": 4.9,
+  "drop": null
+ },
+ "18609_ロミオとシンデレラ_[IN14]": {
+  "n": 390,
+  "offset_ms": -12.0,
+  "conf": 2.91,
+  "edge": false,
+  "agree20_before": 0.721,
+  "agree20_after": 0.754,
+  "nps": 3.68,
+  "drop": null
+ },
+ "18633_守りたいもの_[IN13]": {
+  "n": 274,
+  "offset_ms": -4.0,
+  "conf": 3.59,
+  "edge": false,
+  "agree20_before": 0.635,
+  "agree20_after": 0.653,
+  "nps": 2.54,
+  "drop": null
+ },
+ "188_Saintelmo_[IN15]": {
+  "n": 798,
+  "offset_ms": -132.0,
+  "conf": 2.71,
+  "edge": false,
+  "agree20_before": 0.302,
+  "agree20_after": 0.574,
+  "nps": 6.14,
+  "drop": null
+ },
+ "18912_Trojan_[6]": {
+  "n": 765,
+  "offset_ms": 0.0,
+  "conf": 3.69,
+  "edge": false,
+  "agree20_before": 0.648,
+  "agree20_after": 0.648,
+  "nps": 6.86,
+  "drop": null
+ },
+ "19201_Storm_[IN14]": {
+  "n": 424,
+  "offset_ms": 50.0,
+  "conf": 3.58,
+  "edge": false,
+  "agree20_before": 0.028,
+  "agree20_after": 0.835,
+  "nps": 3.89,
+  "drop": null
+ },
+ "1933_I_[AT16]": {
+  "n": 727,
+  "offset_ms": -66.0,
+  "conf": 3.17,
+  "edge": false,
+  "agree20_before": 0.267,
+  "agree20_after": 0.784,
+  "nps": 5.93,
+  "drop": null
+ },
+ "193_Terrasphere_[AT13]": {
+  "n": 510,
+  "offset_ms": 8.0,
+  "conf": 3.05,
+  "edge": false,
+  "agree20_before": 0.951,
+  "agree20_after": 0.978,
+  "nps": 3.29,
+  "drop": null
+ },
+ "19516_Re：End_of_a_Dream_[AT16]": {
+  "n": 1034,
+  "offset_ms": 132.0,
+  "conf": 3.18,
+  "edge": false,
+  "agree20_before": 0.426,
+  "agree20_after": 0.597,
+  "nps": 7.33,
+  "drop": null
+ },
+ "19518_往生歌_[AT15]": {
+  "n": 466,
+  "offset_ms": -2.0,
+  "conf": 3.2,
+  "edge": false,
+  "agree20_before": 0.837,
+  "agree20_after": 0.828,
+  "nps": 3.39,
+  "drop": null
+ },
+ "19552_Xeno_Gravity_[AT17]": {
+  "n": 1268,
+  "offset_ms": 22.0,
+  "conf": 2.84,
+  "edge": false,
+  "agree20_before": 0.29,
+  "agree20_after": 0.677,
+  "nps": 10.33,
+  "drop": null
+ },
+ "19632_Serene_Scenario_(Theme_201)_[IN11]": {
+  "n": 119,
+  "offset_ms": -10.0,
+  "conf": 2.0,
+  "edge": false,
+  "agree20_before": 0.429,
+  "agree20_after": 0.454,
+  "nps": 1.95,
+  "drop": "low_conf"
+ },
+ "19814_The_Funky_Russian_Train_[SP?]": {
+  "n": 80,
+  "offset_ms": -4.0,
+  "conf": 3.45,
+  "edge": false,
+  "agree20_before": 0.688,
+  "agree20_after": 0.675,
+  "nps": 2.75,
+  "drop": null
+ },
+ "20323_量子力学のためのピアノ協奏曲_[HARD11Deemo]": {
+  "n": 1103,
+  "offset_ms": 56.0,
+  "conf": 3.26,
+  "edge": false,
+  "agree20_before": 0.036,
+  "agree20_after": 0.833,
+  "nps": 4.03,
+  "drop": null
+ },
+ "20919_灾蚀的痕影_Silhouette_of_Catastrophe_[AT16]": {
+  "n": 888,
+  "offset_ms": 18.0,
+  "conf": 3.3,
+  "edge": false,
+  "agree20_before": 0.38,
+  "agree20_after": 0.485,
+  "nps": 8.39,
+  "drop": null
+ },
+ "20988_Hemisphere_[2]": {
+  "n": 970,
+  "offset_ms": -2.0,
+  "conf": 2.7,
+  "edge": false,
+  "agree20_before": 0.687,
+  "agree20_after": 0.687,
+  "nps": 7.79,
+  "drop": null
+ },
+ "21076_Blue_Zenith_[UN17]": {
+  "n": 2762,
+  "offset_ms": 10.0,
+  "conf": 2.31,
+  "edge": false,
+  "agree20_before": 0.58,
+  "agree20_after": 0.59,
+  "nps": 10.62,
+  "drop": null
+ },
+ "21085_Abgrund_[IN14]": {
+  "n": 340,
+  "offset_ms": -10.0,
+  "conf": 3.73,
+  "edge": false,
+  "agree20_before": 0.874,
+  "agree20_after": 0.871,
+  "nps": 2.51,
+  "drop": null
+ },
+ "21152_野花香(Haocore_Mix)_[4]": {
+  "n": 1358,
+  "offset_ms": 0.0,
+  "conf": 2.64,
+  "edge": false,
+  "agree20_before": 0.681,
+  "agree20_after": 0.681,
+  "nps": 7.87,
+  "drop": null
+ },
+ "21329_IMPACT_[IN15]": {
+  "n": 843,
+  "offset_ms": 20.0,
+  "conf": 3.07,
+  "edge": false,
+  "agree20_before": 0.405,
+  "agree20_after": 0.907,
+  "nps": 5.56,
+  "drop": null
+ },
+ "21353_War_in_the_Mirrorworld_[AT16]": {
+  "n": 618,
+  "offset_ms": -22.0,
+  "conf": 2.93,
+  "edge": false,
+  "agree20_before": 0.306,
+  "agree20_after": 0.629,
+  "nps": 5.15,
+  "drop": null
+ },
+ "21809_Sorry_[6]": {
+  "n": 834,
+  "offset_ms": 26.0,
+  "conf": 2.72,
+  "edge": false,
+  "agree20_before": 0.073,
+  "agree20_after": 0.615,
+  "nps": 5.71,
+  "drop": null
+ },
+ "21854_Arsonist_[IN14]": {
+  "n": 583,
+  "offset_ms": 10.0,
+  "conf": 3.35,
+  "edge": false,
+  "agree20_before": 0.614,
+  "agree20_after": 0.746,
+  "nps": 3.1,
+  "drop": null
+ },
+ "21865_'[鹿乃子乃子虎视眈眈]'_[SP?]": {
+  "n": 429,
+  "offset_ms": 2.0,
+  "conf": 3.21,
+  "edge": false,
+  "agree20_before": 0.998,
+  "agree20_after": 1.0,
+  "nps": 4.14,
+  "drop": null
+ },
+ "21913_Unraveling_Stasis_[4]": {
+  "n": 1278,
+  "offset_ms": 0.0,
+  "conf": 2.58,
+  "edge": false,
+  "agree20_before": 0.667,
+  "agree20_after": 0.667,
+  "nps": 7.61,
+  "drop": null
+ },
+ "22436_愛して愛して愛して_[AT16]": {
+  "n": 518,
+  "offset_ms": 8.0,
+  "conf": 3.95,
+  "edge": false,
+  "agree20_before": 0.612,
+  "agree20_after": 0.627,
+  "nps": 4.77,
+  "drop": null
+ },
+ "22855_明镜烈火_[AT16]": {
+  "n": 778,
+  "offset_ms": 16.0,
+  "conf": 3.33,
+  "edge": false,
+  "agree20_before": 0.69,
+  "agree20_after": 0.851,
+  "nps": 5.88,
+  "drop": null
+ },
+ "23347_絶壁人生論_[KX14]": {
+  "n": 740,
+  "offset_ms": -2.0,
+  "conf": 2.75,
+  "edge": false,
+  "agree20_before": 0.891,
+  "agree20_after": 0.889,
+  "nps": 4.96,
+  "drop": null
+ },
+ "23391_What's_up？_Pop！_（feat.初音ミク）_[16]": {
+  "n": 638,
+  "offset_ms": -46.0,
+  "conf": 2.91,
+  "edge": false,
+  "agree20_before": 0.301,
+  "agree20_after": 0.343,
+  "nps": 3.94,
+  "drop": null
+ },
+ "23840_Interface_[4]": {
+  "n": 695,
+  "offset_ms": -140.0,
+  "conf": 3.31,
+  "edge": false,
+  "agree20_before": 0.102,
+  "agree20_after": 0.807,
+  "nps": 5.92,
+  "drop": null
+ },
+ "23896_Vanitas_ac_Redemptionis_[IN15]": {
+  "n": 522,
+  "offset_ms": -8.0,
+  "conf": 1.9,
+  "edge": false,
+  "agree20_before": 0.335,
+  "agree20_after": 0.331,
+  "nps": 3.39,
+  "drop": "low_conf"
+ },
+ "23969_End_Time_[16]": {
+  "n": 824,
+  "offset_ms": 4.0,
+  "conf": 3.18,
+  "edge": false,
+  "agree20_before": 0.597,
+  "agree20_after": 0.6,
+  "nps": 6.15,
+  "drop": null
+ },
+ "24100_天照らす律動_[4]": {
+  "n": 1022,
+  "offset_ms": 0.0,
+  "conf": 2.98,
+  "edge": false,
+  "agree20_before": 0.727,
+  "agree20_after": 0.727,
+  "nps": 8.56,
+  "drop": null
+ },
+ "24851_DiSANiMATE_[TB16]": {
+  "n": 2082,
+  "offset_ms": 36.0,
+  "conf": 3.4,
+  "edge": false,
+  "agree20_before": 0.014,
+  "agree20_after": 0.827,
+  "nps": 6.68,
+  "drop": null
+ },
+ "25139_Seraphim_(Long_Ver.)_[15]": {
+  "n": 1242,
+  "offset_ms": 0.0,
+  "conf": 3.22,
+  "edge": false,
+  "agree20_before": 0.678,
+  "agree20_after": 0.678,
+  "nps": 5.18,
+  "drop": null
+ },
+ "25191_再生_[IN14]": {
+  "n": 519,
+  "offset_ms": -2.0,
+  "conf": 3.83,
+  "edge": false,
+  "agree20_before": 0.896,
+  "agree20_after": 0.896,
+  "nps": 3.14,
+  "drop": null
+ },
+ "25292_Endymion(gmtn._remix)_[WDS0]": {
+  "n": 1299,
+  "offset_ms": -4.0,
+  "conf": 2.9,
+  "edge": false,
+  "agree20_before": 0.701,
+  "agree20_after": 0.708,
+  "nps": 8.35,
+  "drop": null
+ },
+ "25818_蛍はいなかった（初音未来.ver）_[IN14]": {
+  "n": 467,
+  "offset_ms": 68.0,
+  "conf": 3.77,
+  "edge": false,
+  "agree20_before": 0.009,
+  "agree20_after": 0.94,
+  "nps": 2.95,
+  "drop": null
+ },
+ "25865_Speculation_[4]": {
+  "n": 693,
+  "offset_ms": 0.0,
+  "conf": 3.36,
+  "edge": false,
+  "agree20_before": 0.814,
+  "agree20_after": 0.814,
+  "nps": 5.77,
+  "drop": null
+ },
+ "25915_Crazy_tek(1.2×1.05)_[4]": {
+  "n": 1479,
+  "offset_ms": 2.0,
+  "conf": 1.97,
+  "edge": false,
+  "agree20_before": 0.575,
+  "agree20_after": 0.576,
+  "nps": 12.69,
+  "drop": "low_conf"
+ },
+ "26218_Last_Promise_[IN14]": {
+  "n": 474,
+  "offset_ms": 26.0,
+  "conf": 3.75,
+  "edge": false,
+  "agree20_before": 0.084,
+  "agree20_after": 0.907,
+  "nps": 2.94,
+  "drop": null
+ },
+ "26221_Inverted_World_[4]": {
+  "n": 751,
+  "offset_ms": -4.0,
+  "conf": 2.85,
+  "edge": false,
+  "agree20_before": 0.727,
+  "agree20_after": 0.722,
+  "nps": 5.7,
+  "drop": null
+ },
+ "26583_なかよしセンセーション_[4]": {
+  "n": 1945,
+  "offset_ms": -2.0,
+  "conf": 2.89,
+  "edge": false,
+  "agree20_before": 0.57,
+  "agree20_after": 0.569,
+  "nps": 9.55,
+  "drop": null
+ },
+ "26609_Dan_~YA~_JackMap_Pack_ver.1_[SAKAZUKI~Alpha~]": {
+  "n": 793,
+  "offset_ms": -4.0,
+  "conf": 3.35,
+  "edge": false,
+  "agree20_before": 0.729,
+  "agree20_after": 0.736,
+  "nps": 6.56,
+  "drop": null
+ },
+ "26890_【ずんだもん】マシュマリー_-_ぽてかめこRemix_[IN]": {
+  "n": 909,
+  "offset_ms": 50.0,
+  "conf": 3.3,
+  "edge": false,
+  "agree20_before": 0.033,
+  "agree20_after": 0.669,
+  "nps": 4.25,
+  "drop": null
+ },
+ "27006_Harumachi_Clover_[IN15]": {
+  "n": 102,
+  "offset_ms": 90.0,
+  "conf": 3.33,
+  "edge": false,
+  "agree20_before": 0.069,
+  "agree20_after": 0.902,
+  "nps": 3.11,
+  "drop": null
+ },
+ "27157_'Re_End_of_a_Dream'_[AT17]": {
+  "n": 939,
+  "offset_ms": 0.0,
+  "conf": 3.46,
+  "edge": false,
+  "agree20_before": 0.613,
+  "agree20_after": 0.613,
+  "nps": 6.53,
+  "drop": null
+ },
+ "27235_初音ミクの激唱_[AT15]": {
+  "n": 481,
+  "offset_ms": 26.0,
+  "conf": 3.02,
+  "edge": false,
+  "agree20_before": 0.331,
+  "agree20_after": 0.318,
+  "nps": 9.41,
+  "drop": null
+ },
+ "27306_スヂ_[IN15]": {
+  "n": 1069,
+  "offset_ms": 80.0,
+  "conf": 3.36,
+  "edge": false,
+  "agree20_before": 0.288,
+  "agree20_after": 0.763,
+  "nps": 5.04,
+  "drop": null
+ },
+ "27352_Fly_To_Meteor_[IN13]": {
+  "n": 450,
+  "offset_ms": 66.0,
+  "conf": 3.54,
+  "edge": false,
+  "agree20_before": 0.209,
+  "agree20_after": 0.924,
+  "nps": 2.81,
+  "drop": null
+ },
+ "27589_混乱-Confusion_[AT16]": {
+  "n": 945,
+  "offset_ms": -4.0,
+  "conf": 2.98,
+  "edge": false,
+  "agree20_before": 0.75,
+  "agree20_after": 0.751,
+  "nps": 7.38,
+  "drop": null
+ },
+ "27719_《Ж》_[LEGACY15]": {
+  "n": 689,
+  "offset_ms": 8.0,
+  "conf": 3.04,
+  "edge": false,
+  "agree20_before": 0.653,
+  "agree20_after": 0.657,
+  "nps": 4.57,
+  "drop": null
+ },
+ "27974_Altale_[IN13]": {
+  "n": 341,
+  "offset_ms": 26.0,
+  "conf": 4.3,
+  "edge": false,
+  "agree20_before": 0.065,
+  "agree20_after": 0.801,
+  "nps": 2.24,
+  "drop": null
+ },
+ "28308_Fine_Logic_[IN15.2]": {
+  "n": 757,
+  "offset_ms": -4.0,
+  "conf": 3.32,
+  "edge": false,
+  "agree20_before": 0.663,
+  "agree20_after": 0.662,
+  "nps": 5.63,
+  "drop": null
+ },
+ "28317_cyanine_[AT16]": {
+  "n": 950,
+  "offset_ms": 0.0,
+  "conf": 3.07,
+  "edge": false,
+  "agree20_before": 0.836,
+  "agree20_after": 0.836,
+  "nps": 4.96,
+  "drop": null
+ },
+ "2843_Black_Lotus_[IN15]": {
+  "n": 682,
+  "offset_ms": -6.0,
+  "conf": 3.0,
+  "edge": false,
+  "agree20_before": 0.814,
+  "agree20_after": 0.814,
+  "nps": 5.92,
+  "drop": null
+ },
+ "29019_MORNINGLOOM_[SP?]": {
+  "n": 561,
+  "offset_ms": 10.0,
+  "conf": 4.02,
+  "edge": false,
+  "agree20_before": 0.752,
+  "agree20_after": 0.763,
+  "nps": 3.93,
+  "drop": null
+ },
+ "29440_恋の才能_[LOVE.13]": {
+  "n": 675,
+  "offset_ms": -12.0,
+  "conf": 4.17,
+  "edge": false,
+  "agree20_before": 0.659,
+  "agree20_after": 0.69,
+  "nps": 2.53,
+  "drop": null
+ },
+ "295_Àqua_Prism_[4]": {
+  "n": 307,
+  "offset_ms": 56.0,
+  "conf": 3.97,
+  "edge": false,
+  "agree20_before": 0.062,
+  "agree20_after": 0.831,
+  "nps": 2.06,
+  "drop": null
+ },
+ "29699_DEUX_EX_MāXHINā_[AT61]": {
+  "n": 1514,
+  "offset_ms": 78.0,
+  "conf": 3.14,
+  "edge": false,
+  "agree20_before": 0.09,
+  "agree20_after": 0.245,
+  "nps": 12.73,
+  "drop": "low_agree"
+ },
+ "29753_Random_[IN14]": {
+  "n": 441,
+  "offset_ms": 70.0,
+  "conf": 3.77,
+  "edge": false,
+  "agree20_before": 0.147,
+  "agree20_after": 0.776,
+  "nps": 3.24,
+  "drop": null
+ },
+ "29919_在银河中孤独摇摆_[AT15]": {
+  "n": 352,
+  "offset_ms": 46.0,
+  "conf": 3.86,
+  "edge": false,
+  "agree20_before": 0.074,
+  "agree20_after": 0.767,
+  "nps": 2.13,
+  "drop": null
+ },
+ "29932_cyanine_[AT16]": {
+  "n": 1206,
+  "offset_ms": 18.0,
+  "conf": 3.02,
+  "edge": false,
+  "agree20_before": 0.457,
+  "agree20_after": 0.722,
+  "nps": 6.3,
+  "drop": null
+ },
+ "30_夏花_[IN13]": {
+  "n": 1117,
+  "offset_ms": -6.0,
+  "conf": 3.03,
+  "edge": false,
+  "agree20_before": 0.899,
+  "agree20_after": 0.903,
+  "nps": 4.47,
+  "drop": null
+ },
+ "31198_5733P_BOMB_[INSANE.15]": {
+  "n": 872,
+  "offset_ms": 18.0,
+  "conf": 3.92,
+  "edge": false,
+  "agree20_before": 0.539,
+  "agree20_after": 0.839,
+  "nps": 4.08,
+  "drop": null
+ },
+ "31432_Nerverakes_[IN16]": {
+  "n": 513,
+  "offset_ms": 42.0,
+  "conf": 3.19,
+  "edge": false,
+  "agree20_before": 0.088,
+  "agree20_after": 0.645,
+  "nps": 6.09,
+  "drop": null
+ },
+ "31548_过置换_[4]": {
+  "n": 752,
+  "offset_ms": -4.0,
+  "conf": 3.18,
+  "edge": false,
+  "agree20_before": 0.721,
+  "agree20_after": 0.719,
+  "nps": 6.41,
+  "drop": null
+ },
+ "31862_ドリームイーター_[4]": {
+  "n": 1250,
+  "offset_ms": -4.0,
+  "conf": 2.65,
+  "edge": false,
+  "agree20_before": 0.441,
+  "agree20_after": 0.47,
+  "nps": 5.48,
+  "drop": null
+ },
+ "31915_失敗作少女_(MARETU_Remix)_[IN14]": {
+  "n": 1002,
+  "offset_ms": 42.0,
+  "conf": 3.77,
+  "edge": false,
+  "agree20_before": 0.026,
+  "agree20_after": 0.747,
+  "nps": 5.29,
+  "drop": null
+ },
+ "32087_Constant_Moderato_Piano_Arrange_[IN12]": {
+  "n": 293,
+  "offset_ms": 30.0,
+  "conf": 3.93,
+  "edge": false,
+  "agree20_before": 0.16,
+  "agree20_after": 0.597,
+  "nps": 1.58,
+  "drop": null
+ },
+ "32471_……已至_[EX]": {
+  "n": 530,
+  "offset_ms": 58.0,
+  "conf": 3.2,
+  "edge": false,
+  "agree20_before": 0.023,
+  "agree20_after": 0.785,
+  "nps": 3.34,
+  "drop": null
+ },
+ "32523_Nostos2021_[4]": {
+  "n": 1679,
+  "offset_ms": -4.0,
+  "conf": 3.35,
+  "edge": false,
+  "agree20_before": 0.42,
+  "agree20_after": 0.418,
+  "nps": 9.73,
+  "drop": null
+ },
+ "32538_Collapsing_World_[IN13]": {
+  "n": 417,
+  "offset_ms": 18.0,
+  "conf": 4.47,
+  "edge": false,
+  "agree20_before": 0.482,
+  "agree20_after": 0.808,
+  "nps": 2.19,
+  "drop": null
+ },
+ "33217_パシャっとCheese!!_[AT15+]": {
+  "n": 1533,
+  "offset_ms": 50.0,
+  "conf": 2.14,
+  "edge": false,
+  "agree20_before": 0.224,
+  "agree20_after": 0.365,
+  "nps": 5.07,
+  "drop": null
+ },
+ "33233_Hello_(BPM)_2025_[NY2025]": {
+  "n": 3906,
+  "offset_ms": 10.0,
+  "conf": 3.05,
+  "edge": false,
+  "agree20_before": 0.199,
+  "agree20_after": 0.202,
+  "nps": 16.79,
+  "drop": "low_agree"
+ },
+ "33317_We_are_condemned_to_be_free_[IN13]": {
+  "n": 254,
+  "offset_ms": -24.0,
+  "conf": 3.34,
+  "edge": false,
+  "agree20_before": 0.331,
+  "agree20_after": 0.693,
+  "nps": 3.04,
+  "drop": null
+ },
+ "33341_Glitched_Character_[7]": {
+  "n": 2800,
+  "offset_ms": -176.0,
+  "conf": 2.41,
+  "edge": false,
+  "agree20_before": 0.253,
+  "agree20_after": 0.306,
+  "nps": 9.81,
+  "drop": null
+ },
+ "33356_Blizzard_[AT16]": {
+  "n": 1177,
+  "offset_ms": -12.0,
+  "conf": 2.61,
+  "edge": false,
+  "agree20_before": 0.667,
+  "agree20_after": 0.704,
+  "nps": 6.45,
+  "drop": null
+ },
+ "33370_B.B.K.K.B.K.K._(2023_Remake)_[AT15]": {
+  "n": 651,
+  "offset_ms": -6.0,
+  "conf": 2.71,
+  "edge": false,
+  "agree20_before": 0.637,
+  "agree20_after": 0.639,
+  "nps": 4.95,
+  "drop": null
+ },
+ "33395_R_[ADOFAI无评级]": {
+  "n": 725,
+  "offset_ms": -2.0,
+  "conf": 3.25,
+  "edge": false,
+  "agree20_before": 0.71,
+  "agree20_after": 0.709,
+  "nps": 4.94,
+  "drop": null
+ },
+ "33706_XL_TECHNO_-More_Dance_Remix_[XL15]": {
+  "n": 1617,
+  "offset_ms": -126.0,
+  "conf": 2.34,
+  "edge": false,
+  "agree20_before": 0.101,
+  "agree20_after": 0.698,
+  "nps": 8.17,
+  "drop": null
+ },
+ "33829_Take_Me_To_Hell_[IN15]": {
+  "n": 269,
+  "offset_ms": 52.0,
+  "conf": 2.62,
+  "edge": false,
+  "agree20_before": 0.19,
+  "agree20_after": 0.476,
+  "nps": 2.66,
+  "drop": null
+ },
+ "33850_Destructive_Little_Sister_[IN16]": {
+  "n": 891,
+  "offset_ms": 70.0,
+  "conf": 2.67,
+  "edge": false,
+  "agree20_before": 0.249,
+  "agree20_after": 0.755,
+  "nps": 5.98,
+  "drop": null
+ },
+ "34422_闇の世界「絶望の国デスペオーネ」_[AT]": {
+  "n": 1217,
+  "offset_ms": -2.0,
+  "conf": 3.16,
+  "edge": false,
+  "agree20_before": 0.628,
+  "agree20_after": 0.624,
+  "nps": 5.93,
+  "drop": null
+ },
+ "34736_★_yakinic_[SPFire]": {
+  "n": 2346,
+  "offset_ms": -20.0,
+  "conf": 2.86,
+  "edge": false,
+  "agree20_before": 0.392,
+  "agree20_after": 0.736,
+  "nps": 6.71,
+  "drop": null
+ },
+ "34780_Out_of_Sense_[IN15]": {
+  "n": 627,
+  "offset_ms": 24.0,
+  "conf": 3.02,
+  "edge": false,
+  "agree20_before": 0.121,
+  "agree20_after": 0.794,
+  "nps": 5.23,
+  "drop": null
+ },
+ "35366_Sphalerite_[AT16]": {
+  "n": 734,
+  "offset_ms": -48.0,
+  "conf": 3.18,
+  "edge": false,
+  "agree20_before": 0.157,
+  "agree20_after": 0.835,
+  "nps": 4.59,
+  "drop": null
+ },
+ "35430_N_[IN15]": {
+  "n": 1599,
+  "offset_ms": 50.0,
+  "conf": 3.13,
+  "edge": false,
+  "agree20_before": 0.006,
+  "agree20_after": 0.736,
+  "nps": 6.29,
+  "drop": null
+ },
+ "35470_Maelstrom_[IN16]": {
+  "n": 1148,
+  "offset_ms": 28.0,
+  "conf": 2.84,
+  "edge": false,
+  "agree20_before": 0.027,
+  "agree20_after": 0.702,
+  "nps": 4.66,
+  "drop": null
+ },
+ "36053_Gone_Angels_[AT14]": {
+  "n": 436,
+  "offset_ms": 32.0,
+  "conf": 3.4,
+  "edge": false,
+  "agree20_before": 0.158,
+  "agree20_after": 0.64,
+  "nps": 3.01,
+  "drop": null
+ },
+ "36082_Up_to_21°C_[IN14]": {
+  "n": 414,
+  "offset_ms": -32.0,
+  "conf": 3.91,
+  "edge": false,
+  "agree20_before": 0.019,
+  "agree20_after": 0.85,
+  "nps": 3.12,
+  "drop": null
+ },
+ "36301_Beyond_the_Æxis_[FATE20]": {
+  "n": 1908,
+  "offset_ms": 74.0,
+  "conf": 2.85,
+  "edge": false,
+  "agree20_before": 0.349,
+  "agree20_after": 0.307,
+  "nps": 6.94,
+  "drop": null
+ },
+ "3639_INTERNET_YAMERO_[SP?]": {
+  "n": 1093,
+  "offset_ms": 80.0,
+  "conf": 3.78,
+  "edge": false,
+  "agree20_before": 0.182,
+  "agree20_after": 0.569,
+  "nps": 4.48,
+  "drop": null
+ },
+ "37289_It's_alright_[IN]": {
+  "n": 662,
+  "offset_ms": 0.0,
+  "conf": 3.34,
+  "edge": false,
+  "agree20_before": 0.757,
+  "agree20_after": 0.757,
+  "nps": 3.55,
+  "drop": null
+ },
+ "37341_大喜_[AT15]": {
+  "n": 331,
+  "offset_ms": 34.0,
+  "conf": 2.34,
+  "edge": false,
+  "agree20_before": 0.266,
+  "agree20_after": 0.281,
+  "nps": 1.83,
+  "drop": null
+ },
+ "37511_Alfheim's_Faith_[4]": {
+  "n": 722,
+  "offset_ms": 0.0,
+  "conf": 3.7,
+  "edge": false,
+  "agree20_before": 0.806,
+  "agree20_after": 0.806,
+  "nps": 5.15,
+  "drop": null
+ },
+ "38040_第二选择_(Second_Choice)_[IN15]": {
+  "n": 776,
+  "offset_ms": -6.0,
+  "conf": 2.79,
+  "edge": false,
+  "agree20_before": 0.786,
+  "agree20_after": 0.811,
+  "nps": 6.83,
+  "drop": null
+ },
+ "38112_BRAIN_HACKER_[BRAIN]": {
+  "n": 1077,
+  "offset_ms": 10.0,
+  "conf": 2.82,
+  "edge": false,
+  "agree20_before": 0.49,
+  "agree20_after": 0.482,
+  "nps": 8.86,
+  "drop": null
+ },
+ "38555_Shukusai_[48]": {
+  "n": 2415,
+  "offset_ms": 14.0,
+  "conf": 2.63,
+  "edge": false,
+  "agree20_before": 0.385,
+  "agree20_after": 0.432,
+  "nps": 8.81,
+  "drop": null
+ },
+ "38625_Cosmography_[IMPFinal+++]": {
+  "n": 2359,
+  "offset_ms": -2.0,
+  "conf": 3.03,
+  "edge": false,
+  "agree20_before": 0.489,
+  "agree20_after": 0.49,
+  "nps": 8.91,
+  "drop": null
+ },
+ "38875_氷滅の135小節_[AT16]": {
+  "n": 1005,
+  "offset_ms": 0.0,
+  "conf": 3.27,
+  "edge": false,
+  "agree20_before": 0.719,
+  "agree20_after": 0.719,
+  "nps": 6.23,
+  "drop": null
+ },
+ "39039_HAINUWELE_[IN15]": {
+  "n": 897,
+  "offset_ms": 0.0,
+  "conf": 2.54,
+  "edge": false,
+  "agree20_before": 0.863,
+  "agree20_after": 0.863,
+  "nps": 6.0,
+  "drop": null
+ },
+ "39172_Jump_out_[IN15]": {
+  "n": 666,
+  "offset_ms": -2.0,
+  "conf": 2.82,
+  "edge": false,
+  "agree20_before": 0.788,
+  "agree20_after": 0.788,
+  "nps": 4.82,
+  "drop": null
+ },
+ "39246_Paradigm_Shift_[4]": {
+  "n": 695,
+  "offset_ms": 0.0,
+  "conf": 3.3,
+  "edge": false,
+  "agree20_before": 0.871,
+  "agree20_after": 0.871,
+  "nps": 6.0,
+  "drop": null
+ },
+ "39584_蝎虎天体_-Lacertid-_(Phigros_Ver)_[AT18]": {
+  "n": 827,
+  "offset_ms": 70.0,
+  "conf": 3.23,
+  "edge": false,
+  "agree20_before": 0.15,
+  "agree20_after": 0.85,
+  "nps": 5.79,
+  "drop": null
+ },
+ "39673_Distance_[4]": {
+  "n": 1083,
+  "offset_ms": 0.0,
+  "conf": 2.91,
+  "edge": false,
+  "agree20_before": 0.705,
+  "agree20_after": 0.705,
+  "nps": 6.75,
+  "drop": null
+ },
+ "39843_ARES_[IN15]": {
+  "n": 391,
+  "offset_ms": 0.0,
+  "conf": 3.06,
+  "edge": false,
+  "agree20_before": 0.79,
+  "agree20_after": 0.79,
+  "nps": 3.39,
+  "drop": null
+ },
+ "39846_Space_Walk_[IN13.6]": {
+  "n": 218,
+  "offset_ms": -14.0,
+  "conf": 3.89,
+  "edge": false,
+  "agree20_before": 0.431,
+  "agree20_after": 0.422,
+  "nps": 1.89,
+  "drop": null
+ },
+ "39862_Nuit_Silencieuse_[IN16]": {
+  "n": 933,
+  "offset_ms": 28.0,
+  "conf": 3.25,
+  "edge": false,
+  "agree20_before": 0.103,
+  "agree20_after": 0.776,
+  "nps": 5.35,
+  "drop": null
+ },
+ "39889_Stardust_Ember_[IN16]": {
+  "n": 686,
+  "offset_ms": -30.0,
+  "conf": 2.62,
+  "edge": false,
+  "agree20_before": 0.023,
+  "agree20_after": 0.716,
+  "nps": 4.93,
+  "drop": null
+ },
+ "40074_月咏に鸣る_[IN15.5]": {
+  "n": 466,
+  "offset_ms": 2.0,
+  "conf": 3.67,
+  "edge": false,
+  "agree20_before": 0.845,
+  "agree20_after": 0.843,
+  "nps": 3.46,
+  "drop": null
+ },
+ "40106_Sky_strike_[AT16]": {
+  "n": 726,
+  "offset_ms": 70.0,
+  "conf": 3.01,
+  "edge": false,
+  "agree20_before": 0.103,
+  "agree20_after": 0.771,
+  "nps": 4.0,
+  "drop": null
+ },
+ "40591_★Unraveling_Stasis_[IN16]": {
+  "n": 977,
+  "offset_ms": -10.0,
+  "conf": 2.9,
+  "edge": false,
+  "agree20_before": 0.638,
+  "agree20_after": 0.641,
+  "nps": 5.81,
+  "drop": null
+ },
+ "41267_Space_Walk_[IN13.6]": {
+  "n": 217,
+  "offset_ms": -14.0,
+  "conf": 3.91,
+  "edge": false,
+  "agree20_before": 0.433,
+  "agree20_after": 0.424,
+  "nps": 1.88,
+  "drop": null
+ },
+ "41313_十拳剑_[AT16]": {
+  "n": 747,
+  "offset_ms": 48.0,
+  "conf": 2.05,
+  "edge": false,
+  "agree20_before": 0.224,
+  "agree20_after": 0.556,
+  "nps": 4.64,
+  "drop": null
+ },
+ "41469_終焉から命を救う_[AT15]": {
+  "n": 609,
+  "offset_ms": 68.0,
+  "conf": 3.0,
+  "edge": false,
+  "agree20_before": 0.379,
+  "agree20_after": 0.837,
+  "nps": 5.25,
+  "drop": null
+ },
+ "41623_HYPER_SWEET_[AT15]": {
+  "n": 758,
+  "offset_ms": 0.0,
+  "conf": 3.27,
+  "edge": false,
+  "agree20_before": 0.851,
+  "agree20_after": 0.851,
+  "nps": 3.37,
+  "drop": null
+ },
+ "41926_PUPA_(feat._Endorfin.)_[Endorfin._remix]_[IN15]": {
+  "n": 580,
+  "offset_ms": 34.0,
+  "conf": 3.41,
+  "edge": false,
+  "agree20_before": 0.041,
+  "agree20_after": 0.753,
+  "nps": 3.76,
+  "drop": null
+ },
+ "41938_Heracles(Quree_Remix)_[IN16]": {
+  "n": 872,
+  "offset_ms": -44.0,
+  "conf": 3.17,
+  "edge": false,
+  "agree20_before": 0.132,
+  "agree20_after": 0.758,
+  "nps": 6.05,
+  "drop": null
+ },
+ "41992_Prophesy_One_[AT16]": {
+  "n": 756,
+  "offset_ms": 10.0,
+  "conf": 3.63,
+  "edge": false,
+  "agree20_before": 0.661,
+  "agree20_after": 0.665,
+  "nps": 5.73,
+  "drop": null
+ },
+ "42006_バケモノの唄_[IN14]": {
+  "n": 910,
+  "offset_ms": 14.0,
+  "conf": 3.8,
+  "edge": false,
+  "agree20_before": 0.605,
+  "agree20_after": 0.76,
+  "nps": 3.56,
+  "drop": null
+ },
+ "42036_Jipper_EX_[LV.4k]": {
+  "n": 2142,
+  "offset_ms": 10.0,
+  "conf": 2.17,
+  "edge": false,
+  "agree20_before": 0.687,
+  "agree20_after": 0.707,
+  "nps": 7.78,
+  "drop": null
+ },
+ "42088_Interstice_Oath_[AT15.8]": {
+  "n": 672,
+  "offset_ms": -50.0,
+  "conf": 3.42,
+  "edge": false,
+  "agree20_before": 0.018,
+  "agree20_after": 0.836,
+  "nps": 2.53,
+  "drop": null
+ },
+ "42167_Avataar_~_Reincarnation_of_Kalpa_[IN15]": {
+  "n": 626,
+  "offset_ms": 20.0,
+  "conf": 3.16,
+  "edge": false,
+  "agree20_before": 0.375,
+  "agree20_after": 0.76,
+  "nps": 3.58,
+  "drop": null
+ },
+ "42984_Clinozoisite_[AT17]": {
+  "n": 2290,
+  "offset_ms": -14.0,
+  "conf": 2.65,
+  "edge": false,
+  "agree20_before": 0.629,
+  "agree20_after": 0.693,
+  "nps": 6.67,
+  "drop": null
+ },
+ "43106_MYTH_ReLEASE_[RE15+]": {
+  "n": 917,
+  "offset_ms": -8.0,
+  "conf": 3.37,
+  "edge": false,
+  "agree20_before": 0.724,
+  "agree20_after": 0.727,
+  "nps": 6.03,
+  "drop": null
+ },
+ "43996_绯色月下、狂咲ノ絶(Anniversary_Remix）_[4]": {
+  "n": 2657,
+  "offset_ms": -50.0,
+  "conf": 2.38,
+  "edge": false,
+  "agree20_before": 0.035,
+  "agree20_after": 0.645,
+  "nps": 8.69,
+  "drop": null
+ },
+ "44021_《Ж》_[AT17]": {
+  "n": 855,
+  "offset_ms": 4.0,
+  "conf": 2.49,
+  "edge": false,
+  "agree20_before": 0.495,
+  "agree20_after": 0.491,
+  "nps": 5.67,
+  "drop": null
+ },
+ "44057_コピー·ミー_[AT15.5]": {
+  "n": 465,
+  "offset_ms": 6.0,
+  "conf": 2.75,
+  "edge": false,
+  "agree20_before": 0.366,
+  "agree20_after": 0.374,
+  "nps": 3.02,
+  "drop": null
+ },
+ "44070_かごめかごめ_[IN14]": {
+  "n": 671,
+  "offset_ms": 52.0,
+  "conf": 3.44,
+  "edge": false,
+  "agree20_before": 0.082,
+  "agree20_after": 0.742,
+  "nps": 3.72,
+  "drop": null
+ },
+ "44102_星象运轨-The_End_of_Time-_[IN16]": {
+  "n": 469,
+  "offset_ms": 2.0,
+  "conf": 3.4,
+  "edge": false,
+  "agree20_before": 0.701,
+  "agree20_after": 0.71,
+  "nps": 2.85,
+  "drop": null
+ },
+ "44300_Time_to_Say_Goodbye_[1]": {
+  "n": 967,
+  "offset_ms": 30.0,
+  "conf": 2.75,
+  "edge": false,
+  "agree20_before": 0.084,
+  "agree20_after": 0.685,
+  "nps": 7.88,
+  "drop": null
+ },
+ "44470_'悪魔の子_'_[IN.14]": {
+  "n": 239,
+  "offset_ms": 46.0,
+  "conf": 3.16,
+  "edge": false,
+  "agree20_before": 0.092,
+  "agree20_after": 0.745,
+  "nps": 2.65,
+  "drop": null
+ },
+ "4447_unravel_[IN15]": {
+  "n": 1102,
+  "offset_ms": 24.0,
+  "conf": 3.42,
+  "edge": false,
+  "agree20_before": 0.213,
+  "agree20_after": 0.446,
+  "nps": 4.58,
+  "drop": null
+ },
+ "45015_Hello(BPM)2025_[BBC第三届2nd]": {
+  "n": 566,
+  "offset_ms": -16.0,
+  "conf": 2.91,
+  "edge": false,
+  "agree20_before": 0.27,
+  "agree20_after": 0.314,
+  "nps": 2.41,
+  "drop": null
+ },
+ "45496_Hypixel_Dungeon_Drama!_[SHIT15]": {
+  "n": 802,
+  "offset_ms": 32.0,
+  "conf": 2.18,
+  "edge": false,
+  "agree20_before": 0.11,
+  "agree20_after": 0.855,
+  "nps": 4.87,
+  "drop": null
+ },
+ "45780_Exitium_[AT18]": {
+  "n": 1463,
+  "offset_ms": 72.0,
+  "conf": 2.24,
+  "edge": false,
+  "agree20_before": 0.372,
+  "agree20_after": 0.595,
+  "nps": 10.41,
+  "drop": null
+ },
+ "46103_めんどくさいモード_[IN15]": {
+  "n": 730,
+  "offset_ms": -2.0,
+  "conf": 3.35,
+  "edge": false,
+  "agree20_before": 0.792,
+  "agree20_after": 0.789,
+  "nps": 5.41,
+  "drop": null
+ },
+ "46327_Glitched_Character_[GLITCHED17]": {
+  "n": 1653,
+  "offset_ms": -118.0,
+  "conf": 2.79,
+  "edge": false,
+  "agree20_before": 0.169,
+  "agree20_after": 0.375,
+  "nps": 5.82,
+  "drop": null
+ },
+ "4639_NightTheater_[IN15]": {
+  "n": 511,
+  "offset_ms": 34.0,
+  "conf": 3.15,
+  "edge": false,
+  "agree20_before": 0.01,
+  "agree20_after": 0.845,
+  "nps": 3.94,
+  "drop": null
+ },
+ "46738_PC_Funeral_ft._lexxiemow_[IN14]": {
+  "n": 270,
+  "offset_ms": 32.0,
+  "conf": 2.95,
+  "edge": false,
+  "agree20_before": 0.011,
+  "agree20_after": 0.881,
+  "nps": 2.87,
+  "drop": null
+ },
+ "46759_めんへらーめん_[AT18]": {
+  "n": 1048,
+  "offset_ms": 20.0,
+  "conf": 3.2,
+  "edge": false,
+  "agree20_before": 0.3,
+  "agree20_after": 0.565,
+  "nps": 7.06,
+  "drop": null
+ },
+ "47028_跑!_[IN跑]": {
+  "n": 522,
+  "offset_ms": 74.0,
+  "conf": 3.42,
+  "edge": false,
+  "agree20_before": 0.075,
+  "agree20_after": 0.795,
+  "nps": 3.09,
+  "drop": null
+ },
+ "47264_Feeling_Blue_[AT16]": {
+  "n": 519,
+  "offset_ms": 12.0,
+  "conf": 3.01,
+  "edge": false,
+  "agree20_before": 0.802,
+  "agree20_after": 0.867,
+  "nps": 4.23,
+  "drop": null
+ },
+ "47370_Vagina_Dentata_[AT16]": {
+  "n": 841,
+  "offset_ms": 0.0,
+  "conf": 3.29,
+  "edge": false,
+  "agree20_before": 0.874,
+  "agree20_after": 0.874,
+  "nps": 3.74,
+  "drop": null
+ },
+ "47817_Falling_Again_[AT16]": {
+  "n": 421,
+  "offset_ms": -48.0,
+  "conf": 3.93,
+  "edge": false,
+  "agree20_before": 0.088,
+  "agree20_after": 0.862,
+  "nps": 1.57,
+  "drop": null
+ },
+ "47838_殿ッ！？ご乱心！？_-_Shu_-_feat._天羽しろっぷ_[IN16]": {
+  "n": 658,
+  "offset_ms": 24.0,
+  "conf": 3.8,
+  "edge": false,
+  "agree20_before": 0.166,
+  "agree20_after": 0.67,
+  "nps": 4.99,
+  "drop": null
+ },
+ "47987_Mock_[AT]": {
+  "n": 501,
+  "offset_ms": 16.0,
+  "conf": 2.37,
+  "edge": false,
+  "agree20_before": 0.739,
+  "agree20_after": 0.896,
+  "nps": 5.91,
+  "drop": null
+ },
+ "48214_Simulated_Terror_[SP?]": {
+  "n": 110,
+  "offset_ms": 42.0,
+  "conf": 3.8,
+  "edge": false,
+  "agree20_before": 0.127,
+  "agree20_after": 0.382,
+  "nps": 0.92,
+  "drop": null
+ },
+ "48391_Vicious_Mockery_[AT16]": {
+  "n": 1119,
+  "offset_ms": 66.0,
+  "conf": 2.87,
+  "edge": false,
+  "agree20_before": 0.269,
+  "agree20_after": 0.826,
+  "nps": 6.74,
+  "drop": null
+ },
+ "48841_跑！_[AT15]": {
+  "n": 443,
+  "offset_ms": -50.0,
+  "conf": 3.49,
+  "edge": false,
+  "agree20_before": 0.014,
+  "agree20_after": 0.876,
+  "nps": 2.62,
+  "drop": null
+ },
+ "49184_kodokushi_[AT:？]": {
+  "n": 702,
+  "offset_ms": -4.0,
+  "conf": 2.89,
+  "edge": false,
+  "agree20_before": 0.252,
+  "agree20_after": 0.248,
+  "nps": 3.41,
+  "drop": "low_agree"
+ },
+ "49570_What's_up_Pop!_(tpz_Overcute_Remix)_[SP?]": {
+  "n": 962,
+  "offset_ms": 168.0,
+  "conf": 2.5,
+  "edge": false,
+  "agree20_before": 0.402,
+  "agree20_after": 0.681,
+  "nps": 5.71,
+  "drop": null
+ },
+ "49777_RAV#GIRL_[IN14]": {
+  "n": 444,
+  "offset_ms": 56.0,
+  "conf": 3.66,
+  "edge": false,
+  "agree20_before": 0.014,
+  "agree20_after": 0.86,
+  "nps": 3.52,
+  "drop": null
+ },
+ "4988_冬雨_[IN14]": {
+  "n": 534,
+  "offset_ms": -4.0,
+  "conf": 3.02,
+  "edge": false,
+  "agree20_before": 0.787,
+  "agree20_after": 0.785,
+  "nps": 4.0,
+  "drop": null
+ },
+ "49923_QZKago_Requiem_[17]": {
+  "n": 745,
+  "offset_ms": 58.0,
+  "conf": 2.97,
+  "edge": false,
+  "agree20_before": 0.199,
+  "agree20_after": 0.737,
+  "nps": 5.4,
+  "drop": null
+ },
+ "49985_Brightness_[IN15]": {
+  "n": 555,
+  "offset_ms": 54.0,
+  "conf": 3.58,
+  "edge": false,
+  "agree20_before": 0.023,
+  "agree20_after": 0.831,
+  "nps": 4.0,
+  "drop": null
+ },
+ "50300_圣诞星_[2]": {
+  "n": 587,
+  "offset_ms": 0.0,
+  "conf": 3.91,
+  "edge": false,
+  "agree20_before": 0.787,
+  "agree20_after": 0.787,
+  "nps": 3.21,
+  "drop": null
+ },
+ "50301_macro.wav_[IN15]": {
+  "n": 625,
+  "offset_ms": 30.0,
+  "conf": 3.16,
+  "edge": false,
+  "agree20_before": 0.008,
+  "agree20_after": 0.742,
+  "nps": 4.71,
+  "drop": null
+ },
+ "50340_Wavetapper_[SP0]": {
+  "n": 642,
+  "offset_ms": -6.0,
+  "conf": 3.01,
+  "edge": false,
+  "agree20_before": 0.843,
+  "agree20_after": 0.843,
+  "nps": 4.05,
+  "drop": null
+ },
+ "50489_Hall_of_Mirrors_[IN13]": {
+  "n": 409,
+  "offset_ms": 4.0,
+  "conf": 3.9,
+  "edge": false,
+  "agree20_before": 0.814,
+  "agree20_after": 0.817,
+  "nps": 2.67,
+  "drop": null
+ },
+ "50682_Empire_[IN15]": {
+  "n": 708,
+  "offset_ms": -4.0,
+  "conf": 1.86,
+  "edge": false,
+  "agree20_before": 0.845,
+  "agree20_after": 0.833,
+  "nps": 4.44,
+  "drop": "low_conf"
+ },
+ "50715_Do_You_Remember_[IN16]": {
+  "n": 904,
+  "offset_ms": -54.0,
+  "conf": 2.69,
+  "edge": false,
+  "agree20_before": 0.087,
+  "agree20_after": 0.705,
+  "nps": 6.18,
+  "drop": null
+ },
+ "50985_Broken_Fruitz_[AT]": {
+  "n": 1130,
+  "offset_ms": 58.0,
+  "conf": 2.85,
+  "edge": false,
+  "agree20_before": 0.214,
+  "agree20_after": 0.671,
+  "nps": 8.47,
+  "drop": null
+ },
+ "51031_Dementia_[AT16.69]": {
+  "n": 623,
+  "offset_ms": 36.0,
+  "conf": 3.49,
+  "edge": false,
+  "agree20_before": 0.108,
+  "agree20_after": 0.682,
+  "nps": 3.22,
+  "drop": null
+ },
+ "51222_ただ病名が欲しかった_[DD15+]": {
+  "n": 1018,
+  "offset_ms": 12.0,
+  "conf": 3.65,
+  "edge": false,
+  "agree20_before": 0.708,
+  "agree20_after": 0.763,
+  "nps": 5.23,
+  "drop": null
+ },
+ "51494_ウォーアイニー_[IN14]": {
+  "n": 305,
+  "offset_ms": -10.0,
+  "conf": 3.79,
+  "edge": false,
+  "agree20_before": 0.938,
+  "agree20_after": 0.964,
+  "nps": 3.41,
+  "drop": null
+ },
+ "51554_iL-Artifact_[4]": {
+  "n": 1220,
+  "offset_ms": -4.0,
+  "conf": 2.91,
+  "edge": false,
+  "agree20_before": 0.699,
+  "agree20_after": 0.698,
+  "nps": 7.5,
+  "drop": null
+ },
+ "5209_我不曾忘记_[IN15]": {
+  "n": 596,
+  "offset_ms": 24.0,
+  "conf": 2.07,
+  "edge": false,
+  "agree20_before": 0.26,
+  "agree20_after": 0.374,
+  "nps": 2.59,
+  "drop": null
+ },
+ "52357_Gate_Openerz_[4]": {
+  "n": 2839,
+  "offset_ms": 2.0,
+  "conf": 2.65,
+  "edge": false,
+  "agree20_before": 0.409,
+  "agree20_after": 0.409,
+  "nps": 10.75,
+  "drop": null
+ },
+ "52443_Immaculate_[AT17]": {
+  "n": 1126,
+  "offset_ms": 24.0,
+  "conf": 2.9,
+  "edge": false,
+  "agree20_before": 0.214,
+  "agree20_after": 0.71,
+  "nps": 5.83,
+  "drop": null
+ },
+ "52699_Our_Wrenally_[AT17]": {
+  "n": 740,
+  "offset_ms": -40.0,
+  "conf": 3.28,
+  "edge": false,
+  "agree20_before": 0.012,
+  "agree20_after": 0.818,
+  "nps": 5.49,
+  "drop": null
+ },
+ "52756_吴织速核_[SHINOBI18]": {
+  "n": 1216,
+  "offset_ms": -46.0,
+  "conf": 2.9,
+  "edge": false,
+  "agree20_before": 0.014,
+  "agree20_after": 0.739,
+  "nps": 7.18,
+  "drop": null
+ },
+ "52939_Stalemate_[TANGLE18]": {
+  "n": 1298,
+  "offset_ms": -112.0,
+  "conf": 4.44,
+  "edge": false,
+  "agree20_before": 0.025,
+  "agree20_after": 0.258,
+  "nps": 7.66,
+  "drop": null
+ },
+ "52969_Forsaken_Tale_[AT17.2]": {
+  "n": 1041,
+  "offset_ms": 2.0,
+  "conf": 2.51,
+  "edge": false,
+  "agree20_before": 0.397,
+  "agree20_after": 0.4,
+  "nps": 6.83,
+  "drop": null
+ },
+ "53007_MONTAGEM_SEM_PARA_[IN15]": {
+  "n": 334,
+  "offset_ms": -2.0,
+  "conf": 4.12,
+  "edge": false,
+  "agree20_before": 0.641,
+  "agree20_after": 0.638,
+  "nps": 3.73,
+  "drop": null
+ },
+ "53127_Korolev十字绽开，卡门线上化作花束_[IN15]": {
+  "n": 606,
+  "offset_ms": -22.0,
+  "conf": 3.94,
+  "edge": false,
+  "agree20_before": 0.393,
+  "agree20_after": 0.683,
+  "nps": 4.01,
+  "drop": null
+ },
+ "53370_I_Just_Wanna_Hit_Play_[4]": {
+  "n": 1095,
+  "offset_ms": 0.0,
+  "conf": 3.07,
+  "edge": false,
+  "agree20_before": 0.765,
+  "agree20_after": 0.765,
+  "nps": 5.66,
+  "drop": null
+ },
+ "53636_四基·冬_[IN16]": {
+  "n": 914,
+  "offset_ms": 84.0,
+  "conf": 2.82,
+  "edge": false,
+  "agree20_before": 0.391,
+  "agree20_after": 0.585,
+  "nps": 4.38,
+  "drop": null
+ },
+ "53655_Der_Der_Der_Der_Der_Der_Der_Der_Der_Der_Der_Der_[SB???]": {
+  "n": 1245,
+  "offset_ms": -134.0,
+  "conf": 2.79,
+  "edge": false,
+  "agree20_before": 0.434,
+  "agree20_after": 0.451,
+  "nps": 22.74,
+  "drop": "extreme_density"
+ },
+ "53844_B4CK_2_THE_50URCE_[SIMPIE15]": {
+  "n": 1277,
+  "offset_ms": -8.0,
+  "conf": 2.35,
+  "edge": false,
+  "agree20_before": 0.717,
+  "agree20_after": 0.73,
+  "nps": 8.57,
+  "drop": null
+ },
+ "54171_TimeLeaper_[AT]": {
+  "n": 1543,
+  "offset_ms": -2.0,
+  "conf": 2.59,
+  "edge": false,
+  "agree20_before": 0.463,
+  "agree20_after": 0.467,
+  "nps": 6.43,
+  "drop": null
+ },
+ "54401_Eschatology_[COSMOS16]": {
+  "n": 970,
+  "offset_ms": 0.0,
+  "conf": 2.78,
+  "edge": false,
+  "agree20_before": 0.716,
+  "agree20_after": 0.716,
+  "nps": 6.41,
+  "drop": null
+ },
+ "54527_イーヴィルガール_[AT16]": {
+  "n": 1243,
+  "offset_ms": -12.0,
+  "conf": 2.68,
+  "edge": false,
+  "agree20_before": 0.64,
+  "agree20_after": 0.667,
+  "nps": 8.27,
+  "drop": null
+ },
+ "54547_Is_that_honor_beautiful_[FL?]": {
+  "n": 499,
+  "offset_ms": 96.0,
+  "conf": 2.72,
+  "edge": false,
+  "agree20_before": 0.032,
+  "agree20_after": 0.621,
+  "nps": 7.52,
+  "drop": null
+ },
+ "54923_Aconsma_[IN13]": {
+  "n": 197,
+  "offset_ms": -2.0,
+  "conf": 4.38,
+  "edge": false,
+  "agree20_before": 0.756,
+  "agree20_after": 0.751,
+  "nps": 1.34,
+  "drop": null
+ },
+ "54948_Takoyaki-Rave_Bomber_[IN15]": {
+  "n": 981,
+  "offset_ms": 52.0,
+  "conf": 3.06,
+  "edge": false,
+  "agree20_before": 0.005,
+  "agree20_after": 0.846,
+  "nps": 6.09,
+  "drop": null
+ },
+ "55093_crystallized(short_Ver.)_[IN16]": {
+  "n": 777,
+  "offset_ms": 8.0,
+  "conf": 2.98,
+  "edge": false,
+  "agree20_before": 0.852,
+  "agree20_after": 0.852,
+  "nps": 4.0,
+  "drop": null
+ },
+ "55160_Give_(Me)_Your_Love_[IN15]": {
+  "n": 777,
+  "offset_ms": 62.0,
+  "conf": 3.21,
+  "edge": false,
+  "agree20_before": 0.067,
+  "agree20_after": 0.803,
+  "nps": 5.19,
+  "drop": null
+ },
+ "55165_CONVERGENCE_[IN16]": {
+  "n": 988,
+  "offset_ms": 38.0,
+  "conf": 2.86,
+  "edge": false,
+  "agree20_before": 0.052,
+  "agree20_after": 0.78,
+  "nps": 5.07,
+  "drop": null
+ },
+ "55408_CSPRNG_[SP喵]": {
+  "n": 1759,
+  "offset_ms": -8.0,
+  "conf": 3.7,
+  "edge": false,
+  "agree20_before": 0.483,
+  "agree20_after": 0.483,
+  "nps": 6.29,
+  "drop": null
+ },
+ "55542_绝世丑角_[LEGACY13]": {
+  "n": 246,
+  "offset_ms": 10.0,
+  "conf": 4.26,
+  "edge": false,
+  "agree20_before": 0.911,
+  "agree20_after": 0.951,
+  "nps": 2.42,
+  "drop": null
+ },
+ "55724_晚祷的铃歌_Dzwony_na_nieszpory_[IN11]": {
+  "n": 203,
+  "offset_ms": -4.0,
+  "conf": 3.73,
+  "edge": false,
+  "agree20_before": 0.778,
+  "agree20_after": 0.783,
+  "nps": 1.97,
+  "drop": null
+ },
+ "55989_Vandalism-The_Outsider_[16]": {
+  "n": 1114,
+  "offset_ms": -40.0,
+  "conf": 3.19,
+  "edge": false,
+  "agree20_before": 0.083,
+  "agree20_after": 0.722,
+  "nps": 3.48,
+  "drop": null
+ },
+ "56459_我本将心向明月_[IN13]": {
+  "n": 153,
+  "offset_ms": -10.0,
+  "conf": 3.88,
+  "edge": false,
+  "agree20_before": 0.876,
+  "agree20_after": 0.869,
+  "nps": 2.16,
+  "drop": null
+ },
+ "56608_SAN値直葬_[AT17]": {
+  "n": 1278,
+  "offset_ms": -14.0,
+  "conf": 2.29,
+  "edge": false,
+  "agree20_before": 0.238,
+  "agree20_after": 0.286,
+  "nps": 8.77,
+  "drop": null
+ },
+ "57546_Kicks_In_Your_Face_[IN16]": {
+  "n": 445,
+  "offset_ms": -48.0,
+  "conf": 3.97,
+  "edge": false,
+  "agree20_before": 0.076,
+  "agree20_after": 0.807,
+  "nps": 3.35,
+  "drop": null
+ },
+ "57614_Moon_Halo_[IN12]": {
+  "n": 325,
+  "offset_ms": -32.0,
+  "conf": 4.16,
+  "edge": false,
+  "agree20_before": 0.065,
+  "agree20_after": 0.825,
+  "nps": 2.99,
+  "drop": null
+ },
+ "57818_LORELEI_[AT17]": {
+  "n": 1397,
+  "offset_ms": -20.0,
+  "conf": 2.72,
+  "edge": false,
+  "agree20_before": 0.316,
+  "agree20_after": 0.48,
+  "nps": 6.75,
+  "drop": null
+ },
+ "58287_しう(四有)_[IN14]": {
+  "n": 767,
+  "offset_ms": 58.0,
+  "conf": 3.48,
+  "edge": false,
+  "agree20_before": 0.081,
+  "agree20_after": 0.728,
+  "nps": 2.75,
+  "drop": null
+ },
+ "58592_私は、わたしの事が好き。(Short_ver.)_[IN]": {
+  "n": 367,
+  "offset_ms": 54.0,
+  "conf": 3.6,
+  "edge": false,
+  "agree20_before": 0.038,
+  "agree20_after": 0.877,
+  "nps": 3.9,
+  "drop": null
+ },
+ "58704_RT_[4]": {
+  "n": 1096,
+  "offset_ms": -2.0,
+  "conf": 3.52,
+  "edge": false,
+  "agree20_before": 0.479,
+  "agree20_after": 0.481,
+  "nps": 8.16,
+  "drop": null
+ },
+ "59328_⊇繧�レよス〒ナょ魔シ去！！_[15]": {
+  "n": 614,
+  "offset_ms": -30.0,
+  "conf": 3.12,
+  "edge": false,
+  "agree20_before": 0.041,
+  "agree20_after": 0.824,
+  "nps": 3.68,
+  "drop": null
+ },
+ "59386_镜中女_[AT15+]": {
+  "n": 691,
+  "offset_ms": -28.0,
+  "conf": 3.9,
+  "edge": false,
+  "agree20_before": 0.195,
+  "agree20_after": 0.86,
+  "nps": 3.33,
+  "drop": null
+ },
+ "5971_GLAZ_[IN15]": {
+  "n": 686,
+  "offset_ms": 72.0,
+  "conf": 3.24,
+  "edge": false,
+  "agree20_before": 0.101,
+  "agree20_after": 0.687,
+  "nps": 4.54,
+  "drop": null
+ },
+ "59731_That_Girl_[PROFILE13+]": {
+  "n": 1727,
+  "offset_ms": -108.0,
+  "conf": 3.61,
+  "edge": false,
+  "agree20_before": 0.131,
+  "agree20_after": 0.265,
+  "nps": 9.77,
+  "drop": null
+ },
+ "60207_夜猫子_[IN14]": {
+  "n": 780,
+  "offset_ms": 58.0,
+  "conf": 3.35,
+  "edge": false,
+  "agree20_before": 0.032,
+  "agree20_after": 0.833,
+  "nps": 5.2,
+  "drop": null
+ },
+ "60840_求＆影_[IN14.5]": {
+  "n": 873,
+  "offset_ms": 18.0,
+  "conf": 2.37,
+  "edge": false,
+  "agree20_before": 0.442,
+  "agree20_after": 0.727,
+  "nps": 3.68,
+  "drop": null
+ },
+ "60854_绒空FuLov_-_Fireworks_in_the_Snow_[IN14]": {
+  "n": 832,
+  "offset_ms": -2.0,
+  "conf": 4.32,
+  "edge": false,
+  "agree20_before": 0.874,
+  "agree20_after": 0.874,
+  "nps": 3.42,
+  "drop": null
+ },
+ "61343_Unwelcome_School_[PATTERn]": {
+  "n": 732,
+  "offset_ms": -2.0,
+  "conf": 2.92,
+  "edge": false,
+  "agree20_before": 0.811,
+  "agree20_after": 0.829,
+  "nps": 6.04,
+  "drop": null
+ },
+ "61434_Sheer_Ice_Torrent_[IN15]": {
+  "n": 640,
+  "offset_ms": 50.0,
+  "conf": 3.5,
+  "edge": false,
+  "agree20_before": 0.094,
+  "agree20_after": 0.838,
+  "nps": 3.32,
+  "drop": null
+ },
+ "61772_Collapsing_World_[IN15]": {
+  "n": 421,
+  "offset_ms": 18.0,
+  "conf": 4.44,
+  "edge": false,
+  "agree20_before": 0.416,
+  "agree20_after": 0.751,
+  "nps": 2.21,
+  "drop": null
+ },
+ "61847_Whispers_from_a_Distant_Star_[IN15]": {
+  "n": 652,
+  "offset_ms": 6.0,
+  "conf": 3.1,
+  "edge": false,
+  "agree20_before": 0.893,
+  "agree20_after": 0.897,
+  "nps": 4.47,
+  "drop": null
+ },
+ "6206_Sentimental_Surge_[STAMINA+]": {
+  "n": 2531,
+  "offset_ms": -26.0,
+  "conf": 2.11,
+  "edge": false,
+  "agree20_before": 0.063,
+  "agree20_after": 0.533,
+  "nps": 9.17,
+  "drop": null
+ },
+ "62857_Cutie_Mew_Mew_Magic_[4]": {
+  "n": 1656,
+  "offset_ms": -2.0,
+  "conf": 2.65,
+  "edge": false,
+  "agree20_before": 0.537,
+  "agree20_after": 0.537,
+  "nps": 8.97,
+  "drop": null
+ },
+ "62903_星河一天_(Ponchi♪Remix)_[IN16]": {
+  "n": 804,
+  "offset_ms": 48.0,
+  "conf": 3.27,
+  "edge": false,
+  "agree20_before": 0.152,
+  "agree20_after": 0.642,
+  "nps": 6.25,
+  "drop": null
+ },
+ "62925_Styx_257_[IN15]": {
+  "n": 577,
+  "offset_ms": 44.0,
+  "conf": 3.18,
+  "edge": false,
+  "agree20_before": 0.068,
+  "agree20_after": 0.809,
+  "nps": 3.75,
+  "drop": null
+ },
+ "63002_炜WARD_ROMANCE_[AT15]": {
+  "n": 636,
+  "offset_ms": -6.0,
+  "conf": 2.97,
+  "edge": false,
+  "agree20_before": 0.904,
+  "agree20_after": 0.914,
+  "nps": 3.87,
+  "drop": null
+ },
+ "6390_death_by_glamour_[16]": {
+  "n": 681,
+  "offset_ms": 70.0,
+  "conf": 3.46,
+  "edge": false,
+  "agree20_before": 0.095,
+  "agree20_after": 0.586,
+  "nps": 4.92,
+  "drop": null
+ },
+ "6400_吉原ラメント_[IN]": {
+  "n": 469,
+  "offset_ms": 78.0,
+  "conf": 2.81,
+  "edge": false,
+  "agree20_before": 0.043,
+  "agree20_after": 0.39,
+  "nps": 3.35,
+  "drop": null
+ },
+ "6421_萨卡萨卡班班甲鱼鱼_[IN14]": {
+  "n": 587,
+  "offset_ms": -90.0,
+  "conf": 2.18,
+  "edge": false,
+  "agree20_before": 0.152,
+  "agree20_after": 0.191,
+  "nps": 6.4,
+  "drop": "low_agree"
+ },
+ "64602_月葬_[4]": {
+  "n": 1052,
+  "offset_ms": -2.0,
+  "conf": 3.04,
+  "edge": false,
+  "agree20_before": 0.67,
+  "agree20_after": 0.67,
+  "nps": 6.16,
+  "drop": null
+ },
+ "64709_R.I.P._[IN15]": {
+  "n": 600,
+  "offset_ms": 14.0,
+  "conf": 3.07,
+  "edge": false,
+  "agree20_before": 0.668,
+  "agree20_after": 0.773,
+  "nps": 3.95,
+  "drop": null
+ },
+ "64920_Chronomia_1.05x_[PATTERn]": {
+  "n": 988,
+  "offset_ms": 26.0,
+  "conf": 2.89,
+  "edge": false,
+  "agree20_before": 0.057,
+  "agree20_after": 0.662,
+  "nps": 6.94,
+  "drop": null
+ },
+ "65659_Shooting_Athletes_[RING15]": {
+  "n": 508,
+  "offset_ms": -12.0,
+  "conf": 3.06,
+  "edge": false,
+  "agree20_before": 0.886,
+  "agree20_after": 0.917,
+  "nps": 4.22,
+  "drop": null
+ },
+ "65830_Apollo_[4]": {
+  "n": 1567,
+  "offset_ms": 14.0,
+  "conf": 3.38,
+  "edge": false,
+  "agree20_before": 0.581,
+  "agree20_after": 0.69,
+  "nps": 9.91,
+  "drop": null
+ },
+ "66003_Dahlia_[AT16]": {
+  "n": 572,
+  "offset_ms": 34.0,
+  "conf": 3.1,
+  "edge": false,
+  "agree20_before": 0.012,
+  "agree20_after": 0.802,
+  "nps": 4.4,
+  "drop": null
+ },
+ "66167_It's_True_[IN15]": {
+  "n": 896,
+  "offset_ms": 128.0,
+  "conf": 3.38,
+  "edge": false,
+  "agree20_before": 0.079,
+  "agree20_after": 0.903,
+  "nps": 4.43,
+  "drop": null
+ },
+ "66881_Soul_Below_[AT13]": {
+  "n": 483,
+  "offset_ms": 58.0,
+  "conf": 2.8,
+  "edge": false,
+  "agree20_before": 0.197,
+  "agree20_after": 0.29,
+  "nps": 2.47,
+  "drop": null
+ },
+ "67213_溶けてゆく_[IN14]": {
+  "n": 368,
+  "offset_ms": 0.0,
+  "conf": 2.91,
+  "edge": false,
+  "agree20_before": 0.622,
+  "agree20_after": 0.622,
+  "nps": 2.26,
+  "drop": null
+ },
+ "67783_it_brings_back_memories._though_there_was_nothing__[AT16]": {
+  "n": 1255,
+  "offset_ms": -16.0,
+  "conf": 2.72,
+  "edge": false,
+  "agree20_before": 0.602,
+  "agree20_after": 0.715,
+  "nps": 5.72,
+  "drop": null
+ },
+ "68550_夏果て。想いを馳せ。踏切_[IN16]": {
+  "n": 1305,
+  "offset_ms": -32.0,
+  "conf": 3.26,
+  "edge": false,
+  "agree20_before": 0.005,
+  "agree20_after": 0.746,
+  "nps": 4.99,
+  "drop": null
+ },
+ "68829_SAN値直葬_[AT19]": {
+  "n": 1301,
+  "offset_ms": -6.0,
+  "conf": 2.65,
+  "edge": false,
+  "agree20_before": 0.344,
+  "agree20_after": 0.352,
+  "nps": 8.92,
+  "drop": null
+ },
+ "69696_刀刃所栖之物_[IN16]": {
+  "n": 965,
+  "offset_ms": 54.0,
+  "conf": 3.24,
+  "edge": false,
+  "agree20_before": 0.096,
+  "agree20_after": 0.592,
+  "nps": 5.26,
+  "drop": null
+ },
+ "69803_iLLness_LiLin_[AT17]": {
+  "n": 1235,
+  "offset_ms": 24.0,
+  "conf": 2.6,
+  "edge": false,
+  "agree20_before": 0.147,
+  "agree20_after": 0.588,
+  "nps": 10.2,
+  "drop": null
+ },
+ "69806_7_Wonders_[IN15.6]": {
+  "n": 716,
+  "offset_ms": 0.0,
+  "conf": 2.78,
+  "edge": false,
+  "agree20_before": 0.828,
+  "agree20_after": 0.828,
+  "nps": 4.84,
+  "drop": null
+ },
+ "69815_雷切-RAIKIRI-_[4]": {
+  "n": 1190,
+  "offset_ms": 0.0,
+  "conf": 2.66,
+  "edge": false,
+  "agree20_before": 0.663,
+  "agree20_after": 0.663,
+  "nps": 8.76,
+  "drop": null
+ },
+ "69832_Umikaze_Moment_[IN14]": {
+  "n": 495,
+  "offset_ms": -48.0,
+  "conf": 3.08,
+  "edge": false,
+  "agree20_before": 0.02,
+  "agree20_after": 0.913,
+  "nps": 3.48,
+  "drop": null
+ },
+ "7050_I_Got_Smoke_[AT15]": {
+  "n": 1103,
+  "offset_ms": -28.0,
+  "conf": 3.82,
+  "edge": false,
+  "agree20_before": 0.134,
+  "agree20_after": 0.679,
+  "nps": 5.18,
+  "drop": null
+ },
+ "70629_Quaoar_[AT16]": {
+  "n": 1325,
+  "offset_ms": 32.0,
+  "conf": 3.08,
+  "edge": false,
+  "agree20_before": 0.035,
+  "agree20_after": 0.808,
+  "nps": 4.57,
+  "drop": null
+ },
+ "70895_allurements_[IN16]": {
+  "n": 942,
+  "offset_ms": 4.0,
+  "conf": 3.42,
+  "edge": false,
+  "agree20_before": 0.83,
+  "agree20_after": 0.828,
+  "nps": 5.2,
+  "drop": null
+ },
+ "713_Le_Porteur_d'Ombre_[IN15]": {
+  "n": 704,
+  "offset_ms": -6.0,
+  "conf": 2.89,
+  "edge": false,
+  "agree20_before": 0.884,
+  "agree20_after": 0.879,
+  "nps": 4.69,
+  "drop": null
+ },
+ "71500_'蒼天_'_[AT18]": {
+  "n": 1007,
+  "offset_ms": 24.0,
+  "conf": 2.55,
+  "edge": false,
+  "agree20_before": 0.155,
+  "agree20_after": 0.677,
+  "nps": 8.01,
+  "drop": null
+ },
+ "72106_一瞬֍幻夢_[AT17]": {
+  "n": 1121,
+  "offset_ms": 80.0,
+  "conf": 3.64,
+  "edge": false,
+  "agree20_before": 0.254,
+  "agree20_after": 0.724,
+  "nps": 7.02,
+  "drop": null
+ },
+ "72277_Fatum_Cantabile_[AT17]": {
+  "n": 734,
+  "offset_ms": -22.0,
+  "conf": 3.62,
+  "edge": false,
+  "agree20_before": 0.377,
+  "agree20_after": 0.719,
+  "nps": 4.95,
+  "drop": null
+ },
+ "72734_BRAIN_POWER_[AT16]": {
+  "n": 534,
+  "offset_ms": -2.0,
+  "conf": 3.16,
+  "edge": false,
+  "agree20_before": 0.47,
+  "agree20_after": 0.478,
+  "nps": 4.52,
+  "drop": null
+ },
+ "73332_Exitium(tpz_Despair_Remix)_[AT18]": {
+  "n": 2011,
+  "offset_ms": 0.0,
+  "conf": 3.04,
+  "edge": false,
+  "agree20_before": 0.557,
+  "agree20_after": 0.557,
+  "nps": 9.37,
+  "drop": null
+ },
+ "73662_way_home_[IN16]": {
+  "n": 553,
+  "offset_ms": -34.0,
+  "conf": 3.55,
+  "edge": false,
+  "agree20_before": 0.108,
+  "agree20_after": 0.6,
+  "nps": 4.91,
+  "drop": null
+ },
+ "74587_シャルル_[IN13]": {
+  "n": 354,
+  "offset_ms": -4.0,
+  "conf": 3.98,
+  "edge": false,
+  "agree20_before": 0.814,
+  "agree20_after": 0.814,
+  "nps": 3.45,
+  "drop": null
+ },
+ "75430_悔__[∽]": {
+  "n": 714,
+  "offset_ms": 30.0,
+  "conf": 3.06,
+  "edge": false,
+  "agree20_before": 0.052,
+  "agree20_after": 0.912,
+  "nps": 4.53,
+  "drop": null
+ },
+ "75944_Never_Say_Goodbye_[AT18]": {
+  "n": 1197,
+  "offset_ms": 8.0,
+  "conf": 2.55,
+  "edge": false,
+  "agree20_before": 0.579,
+  "agree20_after": 0.578,
+  "nps": 7.09,
+  "drop": null
+ },
+ "77347_Jam_with_Pancake_[IN15]": {
+  "n": 526,
+  "offset_ms": -58.0,
+  "conf": 3.54,
+  "edge": false,
+  "agree20_before": 0.127,
+  "agree20_after": 0.73,
+  "nps": 3.47,
+  "drop": null
+ },
+ "77658_放空_[IN13]": {
+  "n": 481,
+  "offset_ms": -18.0,
+  "conf": 4.11,
+  "edge": false,
+  "agree20_before": 0.559,
+  "agree20_after": 0.709,
+  "nps": 3.15,
+  "drop": null
+ },
+ "78532_You're_Shining(Avi8_Remix)_[EXTREME16]": {
+  "n": 792,
+  "offset_ms": -8.0,
+  "conf": 4.19,
+  "edge": false,
+  "agree20_before": 0.449,
+  "agree20_after": 0.449,
+  "nps": 3.37,
+  "drop": null
+ },
+ "78723_Straight_into_the_lights_[IN]": {
+  "n": 535,
+  "offset_ms": 100.0,
+  "conf": 3.83,
+  "edge": false,
+  "agree20_before": 0.207,
+  "agree20_after": 0.641,
+  "nps": 3.53,
+  "drop": null
+ },
+ "79335_Absolution_Pulse_[IN15]": {
+  "n": 630,
+  "offset_ms": 0.0,
+  "conf": 2.65,
+  "edge": false,
+  "agree20_before": 0.576,
+  "agree20_after": 0.576,
+  "nps": 3.93,
+  "drop": null
+ },
+ "79688_Marshmallow_Nyam_[AT16]": {
+  "n": 738,
+  "offset_ms": 0.0,
+  "conf": 2.67,
+  "edge": false,
+  "agree20_before": 0.672,
+  "agree20_after": 0.672,
+  "nps": 5.32,
+  "drop": null
+ },
+ "8219_Forest_Nusi_[IN14]": {
+  "n": 681,
+  "offset_ms": -38.0,
+  "conf": 3.43,
+  "edge": false,
+  "agree20_before": 0.012,
+  "agree20_after": 0.887,
+  "nps": 4.45,
+  "drop": null
+ },
+ "8323_憾_[IN11]": {
+  "n": 423,
+  "offset_ms": -6.0,
+  "conf": 3.99,
+  "edge": false,
+  "agree20_before": 0.889,
+  "agree20_after": 0.894,
+  "nps": 3.08,
+  "drop": null
+ },
+ "8342_NFArgonaut_[IN15]": {
+  "n": 771,
+  "offset_ms": 0.0,
+  "conf": 3.19,
+  "edge": false,
+  "agree20_before": 0.815,
+  "agree20_after": 0.815,
+  "nps": 4.95,
+  "drop": null
+ },
+ "8398_Credits_[ST.15]": {
+  "n": 553,
+  "offset_ms": -50.0,
+  "conf": 3.85,
+  "edge": false,
+  "agree20_before": 0.085,
+  "agree20_after": 0.662,
+  "nps": 5.5,
+  "drop": null
+ },
+ "8539_Daisuki_Dayo_[IN15]": {
+  "n": 522,
+  "offset_ms": -30.0,
+  "conf": 3.65,
+  "edge": false,
+  "agree20_before": 0.065,
+  "agree20_after": 0.787,
+  "nps": 4.05,
+  "drop": null
+ },
+ "8619_深夜徘徊_[IN13]": {
+  "n": 349,
+  "offset_ms": 24.0,
+  "conf": 3.61,
+  "edge": false,
+  "agree20_before": 0.261,
+  "agree20_after": 0.797,
+  "nps": 2.89,
+  "drop": null
+ },
+ "8769_NightTheater_[IN15]": {
+  "n": 688,
+  "offset_ms": 2.0,
+  "conf": 2.87,
+  "edge": false,
+  "agree20_before": 0.842,
+  "agree20_after": 0.842,
+  "nps": 5.31,
+  "drop": null
+ },
+ "879_ねぇねぇねぇ_[NA14]": {
+  "n": 898,
+  "offset_ms": -82.0,
+  "conf": 3.63,
+  "edge": false,
+  "agree20_before": 0.091,
+  "agree20_after": 0.831,
+  "nps": 4.22,
+  "drop": null
+ },
+ "9656_Dustwind_[IN15]": {
+  "n": 1111,
+  "offset_ms": 24.0,
+  "conf": 2.34,
+  "edge": false,
+  "agree20_before": 0.139,
+  "agree20_after": 0.833,
+  "nps": 7.48,
+  "drop": null
+ }
+}
