@@ -72,3 +72,9 @@
   含 hold/flick/drag 的谱面 291/242/255。数据不稀疏 → 直接训练多类型模型。
 - 重要：v22/v23 的 grid 标签只含 type 1/2/3，**drag 从未作为音符**，这可能就是"连打/滑音段没打击感"的原因之一。v24 onset 包含 drag。
 - v24 = v23dens 热启动 + 7 维输出 [onset, 双押, 类型4, log1p(长条拍数)]，类型 CE 按 1/sqrt 频率加权。训练中：/workspace/bench/v24/train.log
+
+## 21:40 v24 结果 / v24b 启动
+- v24（无节拍引导）30 ep：onset ±20ms（谱面网格，val36）~0.648–0.649 基本持平 v23dens；类型（ep22，val）tap P0.48/R0.65，hold 0.17/0.22，flick 0.11/0.02，drag 0.11/0.03，hold 时长中位误差 0.35 拍。
+  失误：按 f20 存最佳 → 存下的是 ep1（类型头几乎未训练）。已改为按 f20+0.5×类型宏F 选。
+- 漏音分析（v23dens，自动网格 top-K，test，accent_v23dens.json）：重音 top25% 音符召回 0.878；λ=0.3 重音先验 → 0.931，整体 F1 0.644→0.652、召回 0.683→0.689。
+- v24b：+GenéLive 式节拍引导输入（beat_this 下拍=2/拍=1，±1 帧）+ 重音曲线通道，stem 新通道零初始化，从 v23dens 热启动。train 全部 296 首已跑 beat_this（gen/detect_all.py）。

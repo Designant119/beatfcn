@@ -136,6 +136,9 @@ def main():
     y = decode(a.audio); dur = len(y) / SR
     beats, downs, _ = detect(y); beats = beats - LAG_BEAT; downs = downs - LAG_BEAT; beats = beats[beats > 0.05]
     feat = features(y); model, hp, _ = load_any_model(a.ckpt)
+    if hp.get('beat_guide'):
+        from beat_fcn_train_v24 import guide_channels
+        feat = guide_channels(feat, beats + LAG_BEAT, downs + LAG_BEAT)
     gb = subdiv(np.arange(len(beats), dtype=float), DIV) + 1; gt = subdiv(beats, DIV)
     m = (gt >= 0) & (gt < dur); gb, gt = gb[m], gt[m]
     with torch.no_grad():

@@ -16,14 +16,29 @@ def decode_t(L):
     typ = L % 10; dbl = (L // 10) % 10; hb = (L // 100).float() / 8
     return typ, dbl, hb
 
+def beat_guide(T, beats, downs, lag=0.0133):
+    """GenéLive 式节拍引导通道：下拍=2，其他拍=1（±1 帧），其余 0。"""
+    g = np.zeros(T, np.float32)
+    for arr, v in ((beats, 1.0), (downs, 2.0)):
+        f = np.round((np.asarray(arr) - lag) * 22050 / 256).astype(int)
+        for d in (-1, 0, 1):
+            k = np.clip(f + d, 0, T - 1); g[k] = np.maximum(g[k], v)
+    return g
+
+def guide_channels(mel, beats, downs):
+    from gen.accent import accent_curve
+    return np.concatenate([mel, beat_guide(len(mel), beats, downs)[:, None], np.clip(accent_curve(mel), -2, 6)[:, None] / 2], 1).astype(np.float32)
+
 class TypedSongs(CachedSongs):
-    def __init__(self, *a, typed_dir=None, **kw):
-        super().__init__(*a, **kw); self.typed_dir = typed_dir
-        self.fids = [f for f in self.fids if os.path.exists(f'{typed_dir}/{f}.npz')]
+    def __init__(self, *a, typed_dir=None, guide_dir=None, **kw):
+        super().__init__(*a, **kw); self.typed_dir = typed_dir; self.guide_dir = guide_dir
+        self.fids = [f for f in self.fids if os.path.exists(f'{typed_dir}/{f}.npz') and (not guide_dir or os.path.exists(f'{guide_dir}/{f}.npz'))]
     def __getitem__(self, i):
         it = super().__getitem__(i)
         if it is None: return None
         mel, grid, _ = it; z = np.load(f'{self.typed_dir}/{self.fids[i]}.npz'); n = len(grid)
+        if self.guide_dir:
+            b = np.load(f'{self.guide_dir}/{self.fids[i]}.npz'); mel = guide_channels(mel, b['beats'], b['downs'])
         return mel, grid, encode(z['typ'][:n], z['dbl'][:n], z['hold_beats'][:n])
 
 @torch.no_grad()
@@ -57,26 +72,30 @@ def evaluate(model, ds, idxs, ths=(0.3, 0.4, 0.5, 0.6, 0.7)):
         if m.any(): herr.append(np.median(abs(hd[m] - hb[m])))
     best = max(ths, key=lambda t: np.mean(acc[t]))
     per = {TYPES[k]: dict(P=round(v[0] / max(v[1], 1), 3), R=round(v[0] / max(v[2], 1), 3), n_gt=v[2]) for k, v in typ_pr[best].items()}
-    return dict(f20=float(np.mean(acc[best])), th=best, types=per, hold_mae_beats=float(np.median(herr)) if herr else None)
+    mf = float(np.mean([2 * v['P'] * v['R'] / max(v['P'] + v['R'], 1e-9) for v in per.values()]))
+    return dict(f20=float(np.mean(acc[best])), type_macroF=mf, sel=float(np.mean(acc[best])) + 0.5 * mf, th=best, types=per, hold_mae_beats=float(np.median(herr)) if herr else None)
 
 def main():
     ap = argparse.ArgumentParser()
     for k, v in dict(data='grid_npz_clean', pitch_dir='pitch_npz_full', split='split_full128_final.json', cache_dir='feat_cache_clean',
-                     typed_dir='typed_clean', tag='v24', init='').items(): ap.add_argument('--' + k.replace('_', '-'), default=v)
+                     typed_dir='typed_clean', tag='v24', init='', guide_dir='').items(): ap.add_argument('--' + k.replace('_', '-'), default=v)
     ap.add_argument('--epochs', type=int, default=40); ap.add_argument('--threads', type=int, default=3)
     ap.add_argument('--lr', type=float, default=7e-4); ap.add_argument('--max-tokens', type=int, default=80000)
     ap.add_argument('--time-budget', type=float, default=2700); ap.add_argument('--eval-every', type=int, default=2)
     a = ap.parse_args(); torch.set_num_threads(a.threads)
-    kw = dict(pitch_dir=a.pitch_dir, pitch_mode='chroma', n_pitch=46, flux=True, cache_dir=a.cache_dir, typed_dir=a.typed_dir)
+    kw = dict(pitch_dir=a.pitch_dir, pitch_mode='chroma', n_pitch=46, flux=True, cache_dir=a.cache_dir, typed_dir=a.typed_dir, guide_dir=a.guide_dir or None)
     tr = TypedSongs('train', a.data, a.split, **kw); va = TypedSongs('val', a.data, a.split, **kw)
     lens = [tr.length(i) for i in range(len(tr))]; lens = [l if l <= 40000 else 0 for l in lens]
     ev = make_eval_set(va, None, 42, 40000)
-    hp = dict(n_mels=81, n_pitch=46, stem_ch=48, d_model=96, n_layers=4, nhead=4, cells_per_token=16, samples_per_token=16,
+    hp = dict(n_mels=81, n_pitch=48 if a.guide_dir else 46, beat_guide=bool(a.guide_dir), stem_ch=48, d_model=96, n_layers=4, nhead=4, cells_per_token=16, samples_per_token=16,
               stem='sep', arch='v23', cond_density=True, n_out=7)
     model = build_model(hp); build_model.__globals__  # noqa
     if a.init:
         sd = torch.load(a.init, map_location='cpu', weights_only=False)['model']
-        sd = {k: v for k, v in sd.items() if not k.startswith('head.3')}
+        msd = model.state_dict()
+        sd = {k: v for k, v in sd.items() if k in msd and (v.shape == msd[k].shape or k == 'stem.0.weight')}
+        if sd['stem.0.weight'].shape != msd['stem.0.weight'].shape:  # 新增输入通道：零初始化
+            w = torch.zeros_like(msd['stem.0.weight']); w[:, :sd['stem.0.weight'].shape[1]] = sd['stem.0.weight']; sd['stem.0.weight'] = w
         print('init', model.load_state_dict(sd, strict=False), flush=True)
     # 类型频率 → 类权重（1/sqrt）
     cnt = np.zeros(5)
@@ -111,11 +130,11 @@ def main():
         last = stop[0] or time.time() - t0 > a.time_budget or ep == a.epochs
         if ep % a.eval_every == 0 or last:
             r = evaluate(model, va, ev); msg += ' ' + json.dumps(r, ensure_ascii=False)
-            if r['f20'] > best:
-                best = r['f20']; torch.save(dict(model=model.state_dict(), hparams=hp, th1=r['th'], eval=r), f'beat_fcn_best_{a.tag}.pt')
+            if r['sel'] > best:
+                best = r['sel']; torch.save(dict(model=model.state_dict(), hparams=hp, th1=r['th'], eval=r), f'beat_fcn_best_{a.tag}.pt')
         print(msg, flush=True)
         if last: break
-    print(f'done best f20={best:.4f}', flush=True)
+    print(f'done best sel(f20+0.5*typeF)={best:.4f}', flush=True)
 
 if __name__ == '__main__':
     main()

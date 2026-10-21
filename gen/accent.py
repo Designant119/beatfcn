@@ -44,13 +44,16 @@ def analyze(root, ckpt, l1, lams=(0.0, 0.1, 0.2, 0.3)):
         it = ds[i]
         if it is None or not os.path.exists(f'{l1}/{fid}.npz'): continue
         feat, g, l = it; z = np.load(f'{l1}/{fid}.npz'); beats = z['beats'] - lb; downs = z['downs'] - lb
+        if hp.get('beat_guide'):
+            from beat_fcn_train_v24 import guide_channels
+            feat = guide_channels(feat, z['beats'], z['downs'])
         tz = np.load(f'{root}/typed_clean/{fid}.npz'); typ = tz['typ'][:len(g)]
         on = typ > 0 if v24 else l > 0; nt = g[on]; span = max(float(g[-1] - g[0]), 1.0)
         ag = auto_grid(beats, feat.shape[0] / HR); dens = math.log1p(on.sum() / span)
         with torch.no_grad():
             o = model(torch.from_numpy(feat)[None], torch.from_numpy(ag.astype(np.float32))[None], None, dens=torch.tensor([dens]))
         s1 = torch.sigmoid(o[0, :, 0] if v24 else o[0][0]).numpy()
-        cur = accent_curve(feat); a_nt = accent_at(cur, nt); hi = a_nt >= np.percentile(a_nt, 75); K = int(on.sum())
+        cur = accent_curve(feat[:, :80]); a_nt = accent_at(cur, nt); hi = a_nt >= np.percentile(a_nt, 75); K = int(on.sum())
         for lam in lams:
             sel = topk(boosted(s1, cur, ag, downs, lam, 0.05 if lam else 0), ag, K, nms); p = np.sort(ag[sel])
             res[lam]['f20'].append(f1_inst(p, nt, .02)[0])
