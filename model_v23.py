@@ -50,7 +50,7 @@ def sinusoid(n, d, device):
 
 class BeatTokenNet(nn.Module):
     def __init__(self, n_mels=81, n_pitch=46, stem_ch=48, d_model=96, n_layers=4, nhead=4,
-                 cells_per_token=16, samples_per_token=16, n_press=2, dropout=0.1, stem='sep', cond_density=False):
+                 cells_per_token=16, samples_per_token=16, n_press=2, dropout=0.1, stem='sep', cond_density=False, n_out=2):
         super().__init__()
         self.dens_proj = nn.Linear(1, d_model) if cond_density else None  # 难度条件：log1p(音符/秒)
         self.n_press = n_press
@@ -78,7 +78,8 @@ class BeatTokenNet(nn.Module):
         self.cell_pos = nn.Parameter(torch.zeros(self.K, d_model))
         self.cell_audio = nn.Linear(stem_ch, d_model)
         self.cell_note = nn.Linear(nd, d_model)
-        self.head = nn.Sequential(nn.GELU(), nn.Linear(d_model, d_model), nn.GELU(), nn.Linear(d_model, 2))
+        self.head = nn.Sequential(nn.GELU(), nn.Linear(d_model, d_model), nn.GELU(), nn.Linear(d_model, n_out))
+        self.n_out = n_out
 
     def notes_onehot(self, notes):
         valid = (notes >= 0).to(torch.float32)
@@ -132,6 +133,8 @@ class BeatTokenNet(nn.Module):
         ca = _interp(h, grid * HR).transpose(1, 2)                # (B,Gp,C)
         cell = (x.unsqueeze(2) + self.cell_pos).reshape(B, Gp, -1) + self.cell_audio(ca) + self.cell_note(nh)
         o = self.head(cell)                                       # (B,Gp,2)
+        if self.n_out != 2:
+            return o[:, :G]  # v24: (B,G,n_out)
         return o[:, :G, 0], o[:, :G, 1]
 
 
@@ -146,7 +149,7 @@ def load_any_model(ckpt_path, device='cpu', ch=96, n_pitch=46):
                          d_model=hp.get('d_model', 96), n_layers=hp.get('n_layers', 4), nhead=hp.get('nhead', 4),
                          cells_per_token=hp.get('cells_per_token', 16),
                          samples_per_token=hp.get('samples_per_token', 16), stem=hp.get('stem', 'sep'),
-                         cond_density=hp.get('cond_density', False))
+                         cond_density=hp.get('cond_density', False), n_out=hp.get('n_out', 2))
     else:
         from model import BeatFCNContext
         m = BeatFCNContext(n_mels=hp.get('n_mels', 81), ch=hp.get('ch', ch), ctx_off=True,

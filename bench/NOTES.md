@@ -66,3 +66,9 @@
 - demo（bench/demo_charts/<id>，不含音频，版权原因；用原曲音频放进 zip 命名 song.<ext> 即可）：
   74587 シャルル ±20ms 0.653；10096 Crisscross 0.638；4988 冬雨 0.670（请求密度=原谱密度）。
 - 未验证：Phira App 实际导入/游玩手感；重复段落一致性未测；只有 Tap，无 Hold/Drag/Flick。
+
+## 21:00 v24 多类型（gen/typed_labels.py, beat_fcn_train_v24.py）
+- 原始谱面类型统计（296 张清洗谱面，对齐到清洗网格）：tap 277398 (63.6%) / hold 48779 (11.2%) / flick 25278 (5.8%) / drag 84577 (19.4%)；
+  含 hold/flick/drag 的谱面 291/242/255。数据不稀疏 → 直接训练多类型模型。
+- 重要：v22/v23 的 grid 标签只含 type 1/2/3，**drag 从未作为音符**，这可能就是"连打/滑音段没打击感"的原因之一。v24 onset 包含 drag。
+- v24 = v23dens 热启动 + 7 维输出 [onset, 双押, 类型4, log1p(长条拍数)]，类型 CE 按 1/sqrt 频率加权。训练中：/workspace/bench/v24/train.log

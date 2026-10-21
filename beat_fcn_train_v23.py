@@ -170,7 +170,7 @@ def build_model(hp):
     return BeatTokenNet(n_mels=hp.get('n_mels', 81), n_pitch=hp.get('n_pitch', 46), stem_ch=hp.get('stem_ch', 48),
                         d_model=hp.get('d_model', 96), n_layers=hp.get('n_layers', 4), nhead=hp.get('nhead', 4),
                         cells_per_token=hp.get('cells_per_token', 16), samples_per_token=hp.get('samples_per_token', 16),
-                        stem=hp.get('stem', 'sep'), cond_density=hp.get('cond_density', False))
+                        stem=hp.get('stem', 'sep'), cond_density=hp.get('cond_density', False), n_out=hp.get('n_out', 2))
 
 
 def main():
