@@ -17,6 +17,16 @@ def detect(y, sr=SR):
     on = librosa.onset.onset_detect(onset_envelope=env, sr=sr, hop_length=256, units='time', delta=0.02, wait=2)
     return np.asarray(beats, float), np.asarray(downs, float), np.asarray(on, float)
 
+def smooth_beats(b, w=4):
+    """beat_this 输出量化到 20ms 帧；用 ±w 拍局部线性回归平滑（保留变速），离群拍(>40ms)不动。"""
+    b = np.asarray(b, float); out = b.copy()
+    for k in range(len(b)):
+        lo, hi = max(0, k - w), min(len(b), k + w + 1)
+        if hi - lo < 4: continue
+        x = np.arange(lo, hi); p = np.polyfit(x, b[lo:hi], 1); v = np.polyval(p, k)
+        if abs(v - b[k]) < 0.040: out[k] = v
+    return out
+
 def subdiv(beats, n):
     """节拍间 n 等分（含首尾外推一拍）。"""
     if len(beats) < 2: return beats

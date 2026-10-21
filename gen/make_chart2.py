@@ -5,7 +5,7 @@
 """
 import sys, os, json, math, argparse, zipfile, numpy as np, torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from gen.layer1 import detect, subdiv
+from gen.layer1 import detect, subdiv, smooth_beats
 from gen.selector import features
 from gen.accent import accent_curve, boosted, topk
 from gen.make_chart import decode, frac, build_rpe, DIV, LAG_BEAT
@@ -51,11 +51,12 @@ def lanes_4k(times, ends, dbl, cz):
     return out
 
 def write_osu(path_osu, name, audio_name, beats, times, ends, lanes, version):
-    tp = []; prev = None
-    for k in range(len(beats) - 1):
-        bl = (beats[k + 1] - beats[k]) * 1000
-        if prev is None or abs(bl - prev) / prev > 0.01:
-            tp.append(f'{int(round(beats[k] * 1000))},{bl:.4f},4,2,0,60,1,0'); prev = bl
+    # 时间点：用局部中位拍长，只有累计相位误差 >20ms 时才新开一个红线（防 BPM 抖动导致 4K 滚动速度抖）
+    tp = []; k0 = 0; db = np.diff(beats)
+    while k0 < len(beats) - 1:
+        bl = float(np.median(db[k0:k0 + 8])); k = k0 + 1
+        while k < len(beats) and abs(beats[k0] + (k - k0) * bl - beats[k]) < 0.020: k += 1
+        tp.append(f'{int(round(beats[k0] * 1000))},{bl * 1000:.4f},4,2,0,60,1,0'); k0 = max(k - 1, k0 + 1)
     ho = []
     for t, e, ls in zip(times, ends, lanes):
         for l in ls:
@@ -134,7 +135,7 @@ def main():
     a = ap.parse_args(); torch.set_num_threads(3)
     name = a.name or os.path.splitext(os.path.basename(a.audio))[0]
     y = decode(a.audio); dur = len(y) / SR
-    beats, downs, _ = detect(y); beats = beats - LAG_BEAT; downs = downs - LAG_BEAT; beats = beats[beats > 0.05]
+    beats, downs, _ = detect(y); beats = beats - LAG_BEAT; downs = downs - LAG_BEAT; beats = smooth_beats(beats[beats > 0.05])
     feat = features(y); model, hp, _ = load_any_model(a.ckpt)
     if hp.get('beat_guide'):
         from beat_fcn_train_v24 import guide_channels
