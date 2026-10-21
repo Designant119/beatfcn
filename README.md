@@ -18,6 +18,22 @@
 
 仓库**不含**音频、训练数据（npz，约 95GB）和模型权重；它们按下面的流程从 Phira 下载并生成。
 
+
+## v23（推荐）：网格 token 架构，训练提速约 100 倍
+
+v22 在每个音频帧上做全局注意力（3 分钟歌≈15k 帧，O(T²)）。v23 (`model_v23.py`) 改成：
+帧级轻量卷积 → 按节拍网格每 16 格（半拍）收拢成一个 token → Transformer 只看约 1k 个 token
+→ 逐格小头（token 上下文 + 该格帧特征）输出 o1/o2。输入输出接口不变，`infer_v22.py` / `reval_v22.py` 自动识别 v23 ckpt。
+
+```bash
+python beat_fcn_train_v23.py --data ./grid_npz_full128 --pitch-dir ./pitch_npz_full \
+    --split ./split_full128_final.json --epochs 60 --device cuda   # 首轮自动建 float16 特征缓存 feat_cache_v23/
+python infer_v22.py --wav song.mp3 --ckpt beat_fcn_best_v23.pt --out out.json --bpm 128   # th1 自动用 ckpt 里的最优值
+```
+- 评估口径已修正：`strict` = 格级精确 F1（选模型），`loose` = ±50ms F1；v22 的 inst/grid 两个数恒等。
+- `--strict-diff` 只用 IN/AT 难度谱面（v22 实际会混入 SP/EX/数字难度等，约 30%）。
+- 基准脚本：`bench/bench_speed.py`（单曲 FLOPs/耗时/内存）、`bench/bench_eval.py`（同口径精度对比），结果见 `bench/RESULTS.md`。
+
 ## 环境
 
 ```bash
