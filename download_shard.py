@@ -144,7 +144,7 @@ def main():
     args = ap.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)
-    os.makedirs(os.path.dirname(args.manifest), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(args.manifest)), exist_ok=True)
 
     with open(args.jsonl, encoding='utf-8') as f:
         recs = [json.loads(line) for line in f if line.strip()]

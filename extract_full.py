@@ -9,7 +9,7 @@ import numpy as np
 from multiprocessing import Pool, cpu_count
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # 脚本同目录
-from chart_utils import parse_chart, parse_pec, chart_sec, beat_to_sec, beats_of, beat_grid, mel_of, SR, HR, TOL, decode_audio
+from chart_utils import parse_chart, parse_pec, chart_sec, beat_to_sec, beats_of, beat_grid, mel_of, SR, HOP, HR, TOL, decode_audio
 from extract_pitch import extract_pitch
 
 

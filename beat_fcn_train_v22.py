@@ -142,7 +142,7 @@ class LengthBucketSampler(Sampler):
 
 
 # ---------- collate_fn：数据增强 + padding ----------
-def collate_fn(batch, max_frames=30000, crop_aug=True):
+def collate_fn(batch, max_frames=30000, crop_aug=True, crop_frames=None):
     # 过滤None和长歌
     items = []
     for x in batch:
@@ -154,6 +154,8 @@ def collate_fn(batch, max_frames=30000, crop_aug=True):
             full_T = mel.shape[0]
             crop_ratio = random.uniform(0.6, 1.0)
             crop_T = int(full_T * crop_ratio)
+            if crop_frames:  # 低显存/CPU：裁剪片段长度上限（默认None=不限制，和原行为一致）
+                crop_T = min(crop_T, crop_frames)
             crop_start = random.randint(0, full_T - crop_T)
             crop_end = crop_start + crop_T
             mel = mel[crop_start:crop_end]
@@ -212,7 +214,7 @@ def f1_inst(pred_inst, gt_inst, tol=TOL):
     rc = tp / (tp + fn) if tp + fn else 0
     return (2 * pr * rc / (pr + rc) if pr + rc else 0), pr, rc
 
-def evaluate(model, songs, th1=0.4, th2=0.5, max_songs=None, eval_seed=None, max_frames=30000):
+def evaluate(model, songs, th1=0.4, th2=0.5, max_songs=None, eval_seed=None, max_frames=30000, crop_frames=None):
     fids = songs.fids
     if max_songs:
         if eval_seed is not None:
@@ -238,6 +240,8 @@ def evaluate(model, songs, th1=0.4, th2=0.5, max_songs=None, eval_seed=None, max
             T = mel.shape[0]
             if T > 100:
                 crop_len = int(T * rng.uniform(0.6, 1.0))
+                if crop_frames:
+                    crop_len = min(crop_len, crop_frames)
                 crop_start = rng.randint(0, T - crop_len)
                 crop_end = crop_start + crop_len
                 # 裁剪mel
@@ -387,6 +391,7 @@ def main():
     ap.add_argument("--soft-f1", action="store_true", help="加 soft-F1 损失项（权重 0.3）")
     ap.add_argument("--lr", type=float, default=5e-4, help="学习率（Transformer 建议 5e-4）")
     ap.add_argument("--max-frames", type=int, default=30000, help="长歌过滤阈值（帧数，默认30000≈5.8分钟）")
+    ap.add_argument("--crop-frames", type=int, default=None, help="随机裁剪片段最大帧数（CPU/小显存调试用，如4000≈46秒；默认不限制）")
     ap.add_argument("--no-length-bucket", action="store_true", help="关闭按长度分桶（默认开，减少padding浪费）")
     args = ap.parse_args()
     if args.threads > 0:
@@ -510,17 +515,21 @@ def main():
     # DataLoader建在循环外，persistent_workers才能复用worker进程
     sampler = LengthBucketSampler(song_lens, BS, bucket_size=200, seed=start_ep, skip=skip_n)
     def _collate(batch):
-        return collate_fn(batch, max_frames=MAXF, crop_aug=True)
+        return collate_fn(batch, max_frames=MAXF, crop_aug=True, crop_frames=args.crop_frames)
     def _worker_init(worker_id):
         """每个worker进程独立播种，避免8个worker加的噪声/裁剪完全一样"""
         import random, numpy as np
         seed = torch.initial_seed() % (2**32) + worker_id
         random.seed(seed)
         np.random.seed(seed)
+    # CPU 上 fork 出的 persistent worker 与 torch 线程池会在第2轮死锁（实测），CPU 模式退回单进程加载
+    n_workers = min(args.threads, 8) if device.type != 'cpu' else 0
+    if device.type == 'cpu' and args.threads > 0:
+        print("[CPU模式] DataLoader 使用单进程加载（避免多进程死锁）", flush=True)
     loader = DataLoader(tr, batch_sampler=sampler, collate_fn=_collate,
-                        num_workers=min(args.threads, 8), prefetch_factor=2 if args.threads > 0 else None,
-                        pin_memory=True, persistent_workers=(args.threads > 0),
-                        worker_init_fn=_worker_init if args.threads > 0 else None)
+                        num_workers=n_workers, prefetch_factor=2 if n_workers > 0 else None,
+                        pin_memory=(device.type == 'cuda'), persistent_workers=(n_workers > 0),
+                        worker_init_fn=_worker_init if n_workers > 0 else None)
 
     # ---------- 停止信号处理：收到Ctrl+C/SIGTERM时保存断点再退出，不丢训练 ----------
     stop_requested = [False]  # 用列表存标志，闭包里能修改
@@ -605,7 +614,7 @@ def main():
         sched.step()
         skip_n = 0
         if True:  # 每轮都评估
-            fi, fg, dprec, drec, fi_full, fg_full, fi_half, fg_half = evaluate(model, va, max_songs=args.eval_songs, eval_seed=args.eval_seed, max_frames=MAXF)
+            fi, fg, dprec, drec, fi_full, fg_full, fi_half, fg_half = evaluate(model, va, max_songs=args.eval_songs, eval_seed=args.eval_seed, max_frames=MAXF, crop_frames=args.crop_frames)
             improved_grid = fg > best_grid; wait = 0 if improved_grid else wait + 1
             if improved_grid: best_grid = fg
             if fi > best_inst: best_inst = fi
