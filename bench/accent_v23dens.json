@@ -1,0 +1,47 @@
+{
+ "0.0": {
+  "f20": 0.6437,
+  "recall": 0.6826,
+  "recall_hi_accent": 0.8776
+ },
+ "0.1": {
+  "f20": 0.6473,
+  "recall": 0.686,
+  "recall_hi_accent": 0.9004
+ },
+ "0.2": {
+  "f20": 0.6503,
+  "recall": 0.688,
+  "recall_hi_accent": 0.916
+ },
+ "0.3": {
+  "f20": 0.652,
+  "recall": 0.6892,
+  "recall_hi_accent": 0.931
+ },
+ "missed_at_lam0": {
+  "total": 9276,
+  "drag_frac": 0.039,
+  "hi_accent_frac": 0.097
+ },
+ "demo": {
+  "10096_Crisscross_[IN15]": {
+   "recall": 0.638,
+   "miss_drag_frac": 0.01,
+   "recall_drag": 0.9,
+   "recall_hi_accent": 0.979
+  },
+  "74587_シャルル_[IN13]": {
+   "recall": 0.655,
+   "miss_drag_frac": 0.033,
+   "recall_drag": 0.6,
+   "recall_hi_accent": 0.843
+  },
+  "4988_冬雨_[IN14]": {
+   "recall": 0.669,
+   "miss_drag_frac": 0.056,
+   "recall_drag": 0.762,
+   "recall_hi_accent": 0.948
+  }
+ }
+}
