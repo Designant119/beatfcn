@@ -22,3 +22,9 @@
 | v23b ep19 | ≈ 同墙钟 (~27 min 计算，2 线程) | 0.237 | 0.333 | 0.554 | 0.405 |
 结论：同 epoch 数 v23 略低（±20ms −0.03），同墙钟 v23 明显更好（+0.06）；推理 0.08s vs 4.7s/首。
 - v23c (d128) 第一次因 prlimit --as=10G 在 ep7 OOM（虚拟内存上限过紧），已 --resume，as=16G、max-tokens 80000。systemd-run --user 在此 box 不可用（无 user bus）。
+
+## 17:12 状态（executor 收尾）
+- v23c (d128) 仍在后台跑（pid 120979，timeout 到约 17:45 自停），ep15 f20 0.326 / strict 0.228 / ±50ms 0.498（38 首 val），未超过 v23b（f20 0.355）→ 加大 d_model 在 232 首上没收益，瓶颈是数据量和标签噪声。
+- 吞吐：d96/2 线程 ≈0.35 s/首/epoch，d128/3 线程 ≈0.50 s/首/epoch → 全量 11373 首 ≈66–95 min/epoch，30 epoch ≈ 33–48 h（CPU，限 3 线程）。
+- 全量数据：约 75GB 下载（磁盘剩 72GB，不够，需清理/扩容）；按交接文档提取 mel+pitch 8 进程 5–7h，限 3 进程约 15–20h。
+- 未做（时间不够）：子格偏移头（oracle 证明不需要）、focal loss、onset 峰值特征。
