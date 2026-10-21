@@ -124,7 +124,7 @@ def evaluate(model, songs, idxs, device, cond_frac=0.3, th_grid=TH_GRID, th2=0.5
     """固定口径评估。每首歌两次：盲采(全遮罩) + 条件采音(前 cond_frac 给真值)。只在遮罩段计分。
     返回 dict：每个 th1 的 strict/loose F1（盲采、条件、平均），以及最优 th1 下的双押 P/R。"""
     model.eval()
-    acc = {th: {'s_b': [], 's_c': [], 'l_b': [], 'l_c': []} for th in th_grid}
+    acc = {th: {'s_b': [], 's_c': [], 'l_b': [], 'l_c': [], 'm_b': [], 'm_c': []} for th in th_grid}
     dbl = {th: [0, 0, 0] for th in th_grid}
     for i in idxs:
         mel, grid, label = songs[i]
@@ -143,6 +143,7 @@ def evaluate(model, songs, idxs, device, cond_frac=0.3, th_grid=TH_GRID, th2=0.5
                 tp = int((hit & gt_m).sum()); fp = int((hit & ~gt_m).sum()); fn = int((~hit & gt_m).sum())
                 acc[th]['s_' + mode].append(2 * tp / max(2 * tp + fp + fn, 1))
                 acc[th]['l_' + mode].append(f1_inst(g[hit], g[gt_m], loose_tol)[0])
+                acc[th]['m_' + mode].append(f1_inst(g[hit], g[gt_m], 0.020)[0])
                 pd = hit & (s2[mpt:] >= th2); gd = gt[mpt:] == 2
                 dbl[th][0] += int((pd & gd).sum()); dbl[th][1] += int((pd & ~gd).sum()); dbl[th][2] += int((~pd & gd).sum())
     res = {}
@@ -150,10 +151,11 @@ def evaluate(model, songs, idxs, device, cond_frac=0.3, th_grid=TH_GRID, th2=0.5
         a = {k: float(np.mean(v)) if v else 0.0 for k, v in acc[th].items()}
         a['strict'] = (a['s_b'] + a['s_c']) / 2
         a['loose'] = (a['l_b'] + a['l_c']) / 2
+        a['f20'] = (a['m_b'] + a['m_c']) / 2
         tp, fp, fn = dbl[th]
         a['dprec'] = tp / max(tp + fp, 1); a['drec'] = tp / max(tp + fn, 1)
         res[th] = a
-    best_th = max(th_grid, key=lambda t: res[t]['strict'])
+    best_th = max(th_grid, key=lambda t: res[t]['f20'])
     return res, best_th
 
 
@@ -288,12 +290,12 @@ def main():
         res, th = evaluate(model, va, eval_idx, device)
         r = res[th]
         t_eval = time.time() - te
-        improved = r['strict'] > best
-        if improved: best = r['strict']
+        improved = r['f20'] > best
+        if improved: best = r['f20']
         hist.append(dict(ep=ep, loss=tot / max(n, 1), th1=th, train_s=t_ep, eval_s=t_eval, **{k: r[k] for k in
-                    ('strict', 'loose', 's_b', 's_c', 'l_b', 'l_c', 'dprec', 'drec')}))
+                    ('strict', 'f20', 'loose', 's_b', 's_c', 'l_b', 'l_c', 'dprec', 'drec')}))
         print(f'[{ep}/{args.epochs}] strict={r["strict"]:.4f} (盲{r["s_b"]:.3f}/条件{r["s_c"]:.3f}) '
-              f'loose50ms={r["loose"]:.4f} dP={r["dprec"]:.3f} dR={r["drec"]:.3f} th1={th} best={best:.4f} '
+              f'f20ms={r["f20"]:.4f} loose50ms={r["loose"]:.4f} dP={r["dprec"]:.3f} dR={r["drec"]:.3f} th1={th} best={best:.4f} '
               f'L={tot/max(n,1):.3f} lr={opt.param_groups[0]["lr"]:.1e} '
               f'train {t_ep:.0f}s (数据{t_data:.0f}s/计算{t_step:.0f}s) eval {t_eval:.0f}s', flush=True)
         state = dict(model=model.state_dict(), hparams=hp, th1=th, ep=ep, best=best, hist=hist)
@@ -304,7 +306,7 @@ def main():
         json.dump(dict(best=best, hist=hist), open(f'ckpt_{args.tag}.json', 'w'), indent=1)
         if stop[0] or (args.time_budget and time.time() - t_train0 > args.time_budget):
             print('[停止] 到达时间预算或收到停止信号', flush=True); break
-    print(f'done. best strict F1={best:.4f}', flush=True)
+    print(f'done. best f20ms F1={best:.4f}', flush=True)
 
 
 if __name__ == '__main__':
