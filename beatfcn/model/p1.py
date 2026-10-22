@@ -46,6 +46,14 @@ class P1Config:
     phira_location: bool = False  # Phira line/side/x are inputs only, never predicted (user decision 2026-10-23)
     k_window: tuple = (-2.0, 2.0)
     y_window: tuple = (-1.0, 3.0)
+    # selection mechanism ("A" in the design package): field from target audio x isolated intent
+    selection: bool = False
+    # pre-registered diagnostics (FIRST_CANDIDATE §3); defaults are the first candidate
+    readout: str = 'multitap'  # 'multitap' | 'design_package' (top tap only, 4 learned slots per cell)
+    audio_window: bool = True
+    time_head: str = 'pointer'  # 'pointer' | 'linear'
+    fine_branch: bool = True
+    gather_after_time: bool = True
 
 
 class RMSNorm(nn.Module):
@@ -137,7 +145,7 @@ class P1Model(nn.Module):
         self.layers = nn.ModuleList(Layer(c) for _ in range(c.layers))
         self.norm = RMSNorm(d)
         # row embeddings
-        self.type_e = nn.Embedding(6, 64)  # 4 types, 4=unselected, 5=pad
+        self.type_e = nn.Embedding(7, 64)  # 4 types, 4=unselected, 5=pad, 6=selected with masked attributes (CF view)
         self.lane_e = nn.Embedding(5, 64)
         self.line_e = nn.Embedding(FE.MAX_LINES + 1, 64)
         self.side_e = nn.Embedding(3, 16)
@@ -193,6 +201,15 @@ class P1Model(nn.Module):
         self.det_q = nn.Linear(H + 256, P)
         self.det_sub = nn.Embedding(4, 1)
         self.end_fine = nn.Linear(H + P, 10)
+        if c.selection:
+            self.sel_audio = nn.Linear(P, 64)
+            self.sel_z = nn.Linear(d, 64)
+            self.sel_v = nn.Linear(d, 1)
+            self.sel_lam = nn.Parameter(torch.zeros(()))  # lambda = sigmoid(.) in (0,1), init 0.5
+        if c.readout == 'design_package':
+            self.slot_q = nn.Parameter(torch.randn(4, c.tap_dim) * 0.02)
+        if c.time_head == 'linear':
+            self.time_linear = nn.Linear(d, FE.CORE_BINS)
 
     # ------------------------------------------------------------ embeddings
     def _events(self, ev, selected_flag=False):
@@ -271,7 +288,7 @@ class P1Model(nn.Module):
         return self.group_p(torch.cat([s, m], -1))
 
     # ------------------------------------------------------------ masks
-    def _mask(self, bt, lens, times, valid, n_y):
+    def _mask(self, bt, lens, times, valid, n_y, per_cell=8):
         c = self.c
         dev = bt['mode'].device
         B = bt['mode'].shape[0]
@@ -294,9 +311,12 @@ class P1Model(nn.Module):
         dt = cell_t[None, None, :] - t_row[:, :, None]
         kq = (kinds == 4)[None, :, None]
         yq = (kinds == 5)[None, :, None]
-        win = (kq & (dt >= c.k_window[0]) & (dt <= c.k_window[1])) | (yq & (dt >= c.y_window[0]) & (dt < c.y_window[1]))
+        if c.audio_window:
+            win = (kq & (dt >= c.k_window[0]) & (dt <= c.k_window[1])) | (yq & (dt >= c.y_window[0]) & (dt < c.y_window[1]))
+        else:  # diagnostic: K and Y rows read all local audio
+            win = (kq | yq).expand(-1, -1, FE.LOCAL_CELLS)
         win = win & bt['audio_valid'][:, None, :] & rv[:, :, None]
-        win = win[..., None].expand(-1, -1, -1, 8).reshape(B, len(kinds), FE.LOCAL_CELLS * 8)
+        win = win[..., None].expand(-1, -1, -1, per_cell).reshape(B, len(kinds), FE.LOCAL_CELLS * per_cell)
         return torch.cat([win, rows], -1)[:, None]
 
     # ------------------------------------------------------------ forward
@@ -305,21 +325,37 @@ class P1Model(nn.Module):
         c = self.c
         B = bt['mode'].shape[0]
         taps = torch.stack([ln(bt['audio'][:, j]) for j, ln in enumerate(self.tap_ln)], 1)  # [B,T,400,8,Dt]
-        taps = (taps + self.band).flatten(2, 3)  # [B,T,3200,Dt]
+        taps = taps + self.band
+        per_cell = 8
+        if c.readout == 'design_package':
+            # diagnostic: only the top tap, 8 bands pooled into 4 learned slots per 40 ms cell
+            top = taps[:, c.taps.index(c.top_tap)]  # [B,400,8,Dt]
+            w = torch.einsum('bcnd,kd->bckn', top, self.slot_q).softmax(-1)
+            pooled = torch.einsum('bckn,bcnd->bckd', w, top)  # [B,400,4,Dt]
+            taps = pooled[:, None].expand(-1, len(c.taps), -1, -1, -1)
+            per_cell = 4
+        ptr_src = taps if c.readout != 'design_package' else (torch.stack([ln(bt['audio'][:, j]) for j, ln in enumerate(self.tap_ln)], 1) + self.band)
+        taps = taps.flatten(2, 3)  # [B,T,cells*per_cell,Dt]
         audio_t = ((torch.arange(FE.LOCAL_CELLS, device=taps.device) + 0.5) * FE.CELL_US / FE.SEC - FE.HALO_US / FE.SEC)
-        audio_t = audio_t.repeat_interleave(8)[None].expand(B, -1)
+        audio_t = audio_t.repeat_interleave(per_cell)[None].expand(B, -1)
         rows, lens, times, timed, valid = self._rows(bt)
         Y, ty, vy = self._y_rows(bt, self.group_embedding(bt))
         x = torch.cat(rows + [Y], 1)
         row_t = torch.cat(times + [ty], 1)
         row_timed = torch.cat(timed + [vy.float()], 1)
-        mask = self._mask(bt, lens, times + [ty], valid + [vy], Y.shape[1])
+        mask = self._mask(bt, lens, times + [ty], valid + [vy], Y.shape[1], per_cell)
         for layer in self.layers:
             x = layer(x, taps, audio_t, row_t, row_timed, mask)
-        h = self.norm(x)[:, sum(lens):]
-        ptr_audio = self.ptr_proj(torch.einsum('t,btnd->bnd', self.ptr_mix.softmax(0).to(taps.dtype), taps))
-        ptr_audio = ptr_audio.view(B, FE.LOCAL_CELLS, 8, -1)
+        hn = self.norm(x)
+        h = hn[:, sum(lens):]
+        if c.readout == 'design_package':
+            ptr_audio = self.ptr_proj(ptr_src[:, c.taps.index(c.top_tap)])  # top tap only, 8 bands
+        else:
+            ptr_audio = self.ptr_proj(torch.einsum('t,btcnd->bcnd', self.ptr_mix.softmax(0).to(ptr_src.dtype), ptr_src))
         fine = self.fine(bt['mel'].transpose(1, 2)).transpose(1, 2)  # [B,1600,P]
+        if not c.fine_branch:
+            fine = torch.zeros_like(fine)
+        self._intent_h = hn[:, lens[0]:lens[0] + lens[1]]  # I rows (read R/I only)
         return h, ptr_audio, fine, ty
 
     def time_logits(self, bt, h, ptr_audio, fine, t_prev):
@@ -339,7 +375,13 @@ class P1Model(nn.Module):
         delta = (bins[None, None] * 10 - prev_ms[..., None]).clamp(min=0)
         bucket = (torch.log2(delta / 10 + 1) * 6).long().clamp(max=63)
         state = bt['cell_state'][:, f0 // 4:f0 // 4 + FE.CORE_BINS // 4].repeat_interleave(4, -1)
-        bin_logits = cell_score + fine_score + self.rel_bias(bucket).squeeze(-1) + self.state_bias(state).squeeze(-1)[:, None]
+        if self.c.time_head == 'linear':  # diagnostic: classify 800 bins from the hidden state alone
+            bin_logits = self.time_linear(h) + self.state_bias(state).squeeze(-1)[:, None]
+        else:
+            bin_logits = cell_score + fine_score + self.rel_bias(bucket).squeeze(-1) + self.state_bias(state).squeeze(-1)[:, None]
+        if self.c.selection and getattr(self, '_sel_core', None) is not None:
+            bias = torch.sigmoid(self.sel_lam) * 2 * torch.tanh(self._sel_core / 2)  # [B,200]
+            bin_logits = bin_logits + bias.repeat_interleave(4, -1)[:, None]
         ms = bins[:, None] * 10 + torch.arange(10, device=dev)[None]  # [800,10]
         ok = bt['bin_ok'][:, None] & (ms[None, None] > prev_ms[..., None, None])  # [B,Ny,800,10]
         bin_mask = ok.any(-1)
@@ -355,6 +397,47 @@ class P1Model(nn.Module):
         logits = torch.cat([self.end_head(h), bin_logits, copy_logits], -1)
         mask = torch.cat([torch.ones(B, Ny, 1, dtype=torch.bool, device=dev), bin_mask, copy_mask], -1)
         return logits, mask, ok
+
+    def ptr_features(self, audio):
+        """Pointer/selection audio features [B,400,8,P] from raw local taps [B,T,400,8,Dt]."""
+        taps = torch.stack([ln(audio[:, j]) for j, ln in enumerate(self.tap_ln)], 1) + self.band
+        if self.c.readout == 'design_package':
+            return self.ptr_proj(taps[:, self.c.taps.index(self.c.top_tap)])
+        return self.ptr_proj(torch.einsum('t,btcnd->bcnd', self.ptr_mix.softmax(0).to(taps.dtype), taps))
+
+    def selection_field(self, ptr_audio, intent_h):
+        """s(cell) from target audio (all 8 bands) querying isolated intent Z; never reads events."""
+        q = self.sel_audio(ptr_audio)  # [B,C,8,64]
+        k = self.sel_z(intent_h)  # [B,I,64]
+        att = torch.einsum('bcnk,bik->bcni', q, k).div(8).softmax(-1)
+        v = self.sel_v(intent_h)[..., 0]  # [B,I]
+        band = torch.einsum('bcni,bi->bcn', att, v)
+        return torch.logsumexp(band, -1) - math.log(band.shape[-1])  # [B,C]
+
+    def intent_only(self, refs, ref_audio, refs_valid):
+        """I rows from R alone (the CF path): identical math to the full pass, since I reads only R/I."""
+        c = self.c
+        B, dev = refs.shape[0], refs.device
+        bt = {'refs': refs, 'ref_audio': ref_audio, 'refs_valid': refs_valid}
+        ra = torch.stack([ln(ref_audio[:, :, j]) for j, ln in enumerate(self.tap_ln)], 2)
+        ra = torch.einsum('t,brtnd->brnd', self.ref_mix.softmax(0).to(ra.dtype), ra) + self.band
+        w = torch.einsum('brnd,d->brn', ra, self.ref_band_q).softmax(-1)
+        R = self._events(refs) + self.ref_audio(torch.einsum('brn,brnd->brd', w, ra)) + self.row_kind.weight[0]
+        I = (self.intent[None] + self.row_kind.weight[1]).expand(B, -1, -1)
+        x = torch.cat([R, I], 1)
+        nr, ni = R.shape[1], I.shape[1]
+        kinds = torch.cat([torch.zeros(nr, device=dev), torch.ones(ni, device=dev)])
+        allow = ((kinds[:, None] == 0) & (kinds[None] == 0)) | ((kinds[:, None] == 1) & (kinds[None] <= 1))
+        rv = torch.cat([refs_valid, torch.ones(B, ni, dtype=torch.bool, device=dev)], 1)
+        rows = allow[None] & rv[:, None, :]
+        rows = torch.where(rv[:, :, None], rows, torch.eye(nr + ni, dtype=torch.bool, device=dev)[None])
+        t = torch.cat([refs[..., 0], torch.zeros(B, ni, device=dev)], 1)
+        timed = torch.cat([refs_valid.float(), torch.zeros(B, ni, device=dev)], 1)
+        empty_taps = x.new_zeros(B, len(c.taps), 0, c.tap_dim)
+        empty_t = x.new_zeros(B, 0)
+        for layer in self.layers:
+            x = layer(x, empty_taps, empty_t, t, timed, rows[:, None])
+        return self.norm(x)[:, nr:]
 
     def residual_logits(self, h_sel, fine, b_sel):
         """h_sel [N,d], fine [N,1600,P] gathered per row, b_sel [N] chosen bin."""
@@ -373,6 +456,8 @@ class P1Model(nn.Module):
         pooled = torch.einsum('nk,nkp->np', w, win)
         frame = (FE.HALO_US // FE.BIN_US + (t_new * FE.SEC / FE.BIN_US).floor().long()).clamp(0, fine_sel.shape[1] - 1)
         f = fine_sel.gather(1, frame[:, None, None].expand(-1, 1, P))[:, 0]
+        if not self.c.gather_after_time:  # diagnostic: GRU starts from the outer state only
+            pooled, f = torch.zeros_like(pooled), torch.zeros_like(f)
         return torch.tanh(self.init(torch.cat([h_sel, pooled, f, self.right_g(self._right_feats(right_new)), busy.float()], -1)))
 
     def forward(self, bt):
@@ -381,6 +466,18 @@ class P1Model(nn.Module):
         B, Ny, d = h.shape
         G = Ny - 1
         dev = h.device
+        m = {}
+        self._sel_core = None
+        if self.c.selection:
+            c0c = FE.HALO_US // FE.CELL_US
+            s_core = self.selection_field(ptr_audio[:, c0c:c0c + FE.CORE_US // FE.CELL_US], self._intent_h)
+            self._sel_core = s_core
+            lab = bt['cell_sel']  # [B,200] 1 head, 0 none, -1 unknown
+            pos, neg = lab == 1, lab == 0
+            bce = F.binary_cross_entropy_with_logits(s_core.float(), pos.float(), reduction='none')
+            if pos.any() and neg.any():
+                l_sel = 0.5 * (bce[pos].mean() + bce[neg].mean())
+                m['select'] = (l_sel * bt.get('w_select', 1.0), int(pos.sum() + neg.sum()), int(((s_core > 0) == pos)[pos | neg].sum()))
         t_prev = torch.cat([torch.full((B, 1), -0.001, device=dev), bt['grp_t']], 1)
         logits, mask, ok = self.time_logits(bt, h, ptr_audio, fine, t_prev)
         row_valid = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=dev), bt['grp_valid']], 1)
@@ -390,7 +487,6 @@ class P1Model(nn.Module):
         copy = torch.cat([bt['grp_copy'], torch.full((B, 1), -1, device=dev)], 1)
         binx = torch.cat([bt['grp_bin'], torch.zeros(B, 1, dtype=torch.long, device=dev)], 1)
         tgt = torch.where(has & (copy >= 0), 1 + FE.CORE_BINS + copy, torch.where(has, 1 + binx, tgt))
-        m = {}
         loss_t, n_t, c_t = masked_ce(logits, tgt, row_valid, mask, 'time')
         m['time'] = (loss_t, n_t, c_t)
         # 1 ms residual for free-bin targets

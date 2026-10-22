@@ -46,6 +46,10 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
         work.right = np.array([_right(t, observed_heads, runs) for t in times], np.float32)
         bt = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in collate([work], [song], c.taps, c.top_tap).items()}
         h, pa, fi, _ = model.encode(bt)
+        model._sel_core = None
+        if model.c.selection:
+            c0c = FE.HALO_US // FE.CELL_US
+            model._sel_core = model.selection_field(pa[:, c0c:c0c + FE.CORE_US // FE.CELL_US], model._intent_h)
         G = len(work.groups)
         hrow = h[:, G:G + 1]
         logits, mask, ok = model.time_logits(bt, hrow, pa, fi, torch.tensor([[t_prev / 1e6 if t_prev >= 0 else -0.001]], device=device))

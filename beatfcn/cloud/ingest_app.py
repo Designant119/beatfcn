@@ -8,6 +8,7 @@ ROW_VERSION); finalize/stamp are cheap and always recomputed.
 """
 from __future__ import annotations
 import json
+import re
 import os
 import time
 import modal
@@ -507,7 +508,8 @@ def main(osu_shards: str = '', phira_limit: int = 0, out: str = 'reports/ingest_
     with open('phira_all_charts.jsonl') as f:
         for line in f:
             r = json.loads(line)
-            if (r.get('rating') or 0) >= 0.92 and (r.get('ratingCount') or 0) >= 100:  # DATA_RULES §1 v3 (~3k train charts)
+            tag = re.split(r'[\s.]', str(r.get('level') or '?').strip().upper())[0]
+            if (r.get('rating') or 0) >= 0.90 and (r.get('ratingCount') or 0) >= 100 and tag in ('EZ', 'HD', 'IN', 'AT'):  # DATA_RULES v4
                 cands.append({k: r.get(k) for k in ('id', 'name', 'level', 'charter', 'composer', 'file', 'rating',
                                                     'ratingCount', 'chartUpdated')})
     if phira_limit:

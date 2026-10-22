@@ -237,8 +237,11 @@ def layer_probe(train_rows: list, val_rows: list, epochs: int = 2, batch: int = 
 
 
 @app.function(image=gpu_image, gpu=GPU, volumes={WEIGHTS: weights, DATA: data}, cpu=4.0, memory=32768, timeout=3600)
-def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16):
-    """Write taps/{key}/{sha}/L{l}.npy (float16 [cells,8,1024]) and S20.npy (2 s means of layer 20)."""
+def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16, pca: str = '', quant: bool = False):
+    """Write taps/{key}/{sha}/L{l}.npy (float16 [cells,8,D]) and S20.npy (2 s means of layer 20, full width).
+
+    pca: name of a frozen PCA in /data/pca (fit_pca); taps are projected on the GPU before saving.
+    """
     import numpy as np
     import torch
     from beatfcn.audio import memory as M
@@ -246,6 +249,11 @@ def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16):
     enc = load_encoder()
     pad = M.silence_row()
     want = sorted(set(layers) | {20})
+    proj = {}
+    if pca:
+        z = np.load(f'{DATA}/pca/{pca}.npz')
+        proj = {l: (torch.from_numpy(z[f'mean_{l}']).cuda(), torch.from_numpy(z[f'comp_{l}']).cuda()) for l in layers}
+    qscale = {l: torch.from_numpy(z[f'scale_{l}']).cuda() for l in layers} if pca and quant else {}
     for sha in shas:
         base = f'{DATA}/taps/{taps_key}/{sha}'
         if all(os.path.exists(f'{base}/L{l}.npy') for l in layers) and os.path.exists(f'{base}/S20.npy'):
@@ -254,7 +262,15 @@ def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16):
         taps = M.encode_song(enc, mel, want, batch=batch, pad_row=pad)
         os.makedirs(base, exist_ok=True)
         for l in layers:
-            np.save(f'{base}/L{l}.npy', taps[l].numpy())
+            t = taps[l]
+            if l in proj:
+                mu, comp = proj[l]
+                t = (t.cuda().float() - mu) @ comp
+                if qscale:
+                    t = (t / qscale[l]).round().clamp(-127, 127).to('cpu', torch.int8)
+                else:
+                    t = t.to('cpu', torch.float16)
+            np.save(f'{base}/L{l}.npy', t.numpy())
         np.save(f'{base}/S20.npy', M.summary_means(taps[20]).numpy().astype(np.float16))
         done += 1
         windows += len(M.plan(mel.shape[0]).starts)
@@ -276,12 +292,67 @@ def run_probe(rows_json: str, out: str = 'reports/layer_probe.json', epochs: int
 
 
 @app.local_entrypoint()
-def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24', per_container: int = 200):
+def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24', per_container: int = 200, pca: str = '',
+           quant: bool = False):
     """Encode songs listed (one sha per line) in parallel H100 containers; idempotent."""
     shas = [s.strip() for s in Path(shas_file).read_text().split() if s.strip()]
     ls = [int(x) for x in layers.split(',')]
     chunks = [shas[i:i + per_container] for i in range(0, len(shas), per_container)]
     t = time.time()
-    res = list(encode_songs.starmap([(c, ls, taps_key) for c in chunks]))
+    res = list(encode_songs.starmap([(c, ls, taps_key, 16, pca, quant) for c in chunks]))
     print(json.dumps({'chunks': len(chunks), 'songs': sum(r['songs'] for r in res), 'windows': sum(r['windows'] for r in res),
                       'gpu_seconds': round(sum(r['seconds'] for r in res), 1), 'wall_s': round(time.time() - t, 1)}))
+
+
+@app.function(image=gpu_image, gpu=GPU, volumes={DATA: data}, cpu=8.0, memory=65536, timeout=3600)
+def fit_pca(src_key: str = 'v2_L9-16-24', layers: list = (9, 16, 24), dims: int = 256, songs: int = 150,
+            cells_per_song: int = 300, seed: int = 20261023):
+    """Frozen per-tap PCA (shared over the 8 bands) fit on TRAIN songs' cached taps; saved to pca/{key}.npz.
+
+    Fixed after fitting, so its outputs are cacheable (FIRST_CANDIDATE §2.6). Reports retained variance.
+    """
+    import numpy as np
+    import torch
+    import json as _json
+    rows = [_json.loads(l) for l in open(f'{DATA}/manifest/charts.jsonl')]
+    train = {r['audio_sha256'] for r in rows if r.get('split') == 'train'}
+    have = sorted(s for s in os.listdir(f'{DATA}/taps/{src_key}') if s in train)
+    rng = np.random.default_rng(seed)
+    pick = [have[i] for i in rng.choice(len(have), size=min(songs, len(have)), replace=False)]
+    out, report = {}, {'src_key': src_key, 'songs': len(pick), 'dims': dims, 'layers': list(layers)}
+    for l in layers:
+        xs = []
+        for sha in pick:
+            a = np.load(f'{DATA}/taps/{src_key}/{sha}/L{l}.npy')  # one sequential read; random mmap reads are slow on volumes
+            idx = np.sort(rng.choice(a.shape[0], size=min(cells_per_song, a.shape[0]), replace=False))
+            xs.append(a[idx].astype(np.float32).reshape(-1, a.shape[-1]))
+        X = torch.from_numpy(np.concatenate(xs)).cuda()
+        mu = X.mean(0)
+        Xc = X - mu
+        cov = Xc.T @ Xc / (len(Xc) - 1)
+        evals, evecs = torch.linalg.eigh(cov.double())
+        evals, evecs = evals.flip(0), evecs.flip(1)
+        comp = evecs[:, :dims].float()
+        kept = float(evals[:dims].sum() / evals.sum())
+        rec = Xc @ comp @ comp.T
+        rel = float(((rec - Xc).pow(2).sum(1) / Xc.pow(2).sum(1).clamp_min(1e-9)).mean())
+        out[f'mean_{l}'], out[f'comp_{l}'] = mu.cpu().numpy(), comp.cpu().numpy()
+        # int8 storage scale per component: 4 sigma maps to 127 (components are decorrelated, sigma = sqrt(eigenvalue))
+        out[f'scale_{l}'] = (4 * evals[:dims].clamp_min(1e-12).sqrt() / 127).float().cpu().numpy()
+        report[f'L{l}'] = {'vectors': len(X), 'variance_kept': round(kept, 4), 'mean_rel_recon_err': round(rel, 4),
+                           'variance_kept_128': round(float(evals[:128].sum() / evals.sum()), 4),
+                           'variance_kept_512': round(float(evals[:512].sum() / evals.sum()), 4)}
+    key = f'pca{dims}_' + '-'.join(map(str, layers))
+    os.makedirs(f'{DATA}/pca', exist_ok=True)
+    np.savez(f'{DATA}/pca/{key}.npz', **out)
+    with open(f'{DATA}/pca/{key}.json', 'w') as f:
+        _json.dump(report, f, indent=1)
+    data.commit()
+    return report
+
+
+@app.local_entrypoint()
+def pca(dims: int = 512):
+    r = fit_pca.remote(dims=dims)
+    Path('reports/pca_fit.json').write_text(json.dumps(r, indent=1))
+    print(json.dumps(r, indent=1))

@@ -78,6 +78,7 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
         'note_type': torch.zeros(B, G, MAX_NOTES, dtype=torch.long), 'note_lane': torch.full((B, G, MAX_NOTES), -1, dtype=torch.long),
         'note_line': torch.full((B, G, MAX_NOTES), -1, dtype=torch.long), 'note_side': torch.full((B, G, MAX_NOTES), -1, dtype=torch.long),
         'note_x': torch.zeros(B, G, MAX_NOTES), 'note_dur': torch.zeros(B, G, MAX_NOTES),
+        'cell_sel': torch.zeros(B, F.CORE_US // F.CELL_US, dtype=torch.long),
     }
     hold_index, hold = [], {'block': [], 'coarse': [], 'fine': [], 'ok_lo': [], 'ok_hi': [], 'onset_us': [], 'blocks': [], 'detail': []}
     for b, (ex, song) in enumerate(zip(examples, songs)):
@@ -104,10 +105,13 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
         out['refs_valid'][b, :len(ex.refs)] = True
         if len(ex.refs):
             cells = np.rint((ex.c0_us + ex.refs[:, 0].astype(np.float64) * F.SEC) / F.CELL_US).astype(np.int64)
-            lo, hi = int(cells.min()), int(cells.max()) + 1
-            for j, layer in enumerate(taps):
-                span, _ = _slice(song.taps[layer], lo, hi - lo)  # one read per tap (references sit in 1-2 spans)
-                out['ref_audio'][b, :len(cells), j] = torch.from_numpy(span[cells - lo])
+            order = np.argsort(cells, kind='stable')
+            breaks = np.flatnonzero(np.diff(cells[order]) > 200) + 1  # one contiguous read per reference cluster
+            for grp in np.split(order, breaks):
+                lo, hi = int(cells[grp].min()), int(cells[grp].max()) + 1
+                for j, layer in enumerate(taps):
+                    span, _ = _slice(song.taps[layer], lo, hi - lo)
+                    out['ref_audio'][b, torch.from_numpy(grp), j] = torch.from_numpy(span[cells[grp] - lo])
         out['controls'][b] = torch.from_numpy(ex.controls)
         out['allowed_types'][b] = torch.from_numpy(ex.allowed_types)
         out['lines'][b] = ex.lines
@@ -115,6 +119,18 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
         out['copy_t'][b, :len(ex.copy_times)] = torch.from_numpy(ex.copy_times / F.SEC).float()
         out['copy_valid'][b, :len(ex.copy_times)] = True
         out['right_rows'][b, :len(ex.right)] = torch.from_numpy(ex.right)
+        # selection labels per core cell: any head (target or observed) -> 1; cells outside the audio -> -1
+        core_cells = F.CORE_US // F.CELL_US
+        lab = torch.zeros(core_cells, dtype=torch.long)
+        for tg in ex.groups:
+            lab[tg['t_rel_us'] // F.CELL_US] = 1
+        for row in ex.known:
+            t = row[0] * F.SEC
+            if 0 <= t < F.CORE_US and row[7] == 0:
+                lab[int(t // F.CELL_US)] = 1
+        h0 = F.HALO_US // F.CELL_US
+        lab[~out['audio_valid'][b, h0:h0 + core_cells]] = -1
+        out['cell_sel'][b] = lab
         for g, tg in enumerate(ex.groups):
             if len(tg['notes']) > MAX_NOTES:
                 raise F.SkipExample('group has more notes than MAX_NOTES')

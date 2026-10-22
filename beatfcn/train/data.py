@@ -18,12 +18,11 @@ DATA = '/data'
 
 
 DUP_REASONS = {'duplicate_object', 'duplicate_object_in_source'}
-DUP_MAX_STACK = 4
-DUP_MAX_FRACTION = 0.01
+DUP_MAX_STACK = 4  # higher stacks at one spot are performance/visual (DATA_RULES v4)
 
 
 def dup_only(r) -> bool:
-    """Quarantined solely for exact duplicate notes (candidate for model-view collapse, DATA_RULES v3)."""
+    """Quarantined solely for exact duplicate notes (kept as written when stacks are <= DUP_MAX_STACK)."""
     reasons = set(r.get('quarantine_reasons') or [])
     return r.get('status') == 'parsed' and bool(reasons) and reasons <= DUP_REASONS
 
@@ -43,15 +42,24 @@ def load_manifest(root=DATA, split=None, kept_only=True, select=True, dup_collap
     return rows
 
 
-PHIRA_MIN_RATING = 0.92
+PHIRA_MIN_RATING = 0.90
 PHIRA_MIN_VOTES = 100
 OSU_APPROVED = (1, 2)  # ranked, approved; loved (4) excluded (DATA_RULES §1)
+# Phira difficulty whitelist (DATA_RULES v4, user decision): only the standard EZ/HD/IN/AT tags. SP charts
+# (notes for performance/drawing), 4K/5K/6K mania imitation, ADOFAI and every custom tag are excluded.
+PHIRA_TAGS = frozenset({'EZ', 'HD', 'IN', 'AT'})
+
+
+def phira_tag(r) -> str:
+    import re
+    return re.split(r'[\s.]', (r.get('difficulty_label') or '?').strip().upper())[0]
 
 
 def selected_for_training(r) -> bool:
     """Quality selection on top of the ingested superset (DATA_RULES §1, 宁缺毋滥)."""
     if r.get('source') == 'phira':
-        return float(r.get('rating') or 0) >= PHIRA_MIN_RATING and int(float(r.get('rating_count') or 0)) >= PHIRA_MIN_VOTES
+        return (float(r.get('rating') or 0) >= PHIRA_MIN_RATING and int(float(r.get('rating_count') or 0)) >= PHIRA_MIN_VOTES
+                and phira_tag(r) in PHIRA_TAGS)
     if r.get('source') == 'osu':
         return int(r.get('approved') or 0) in OSU_APPROVED
     return False
@@ -63,26 +71,16 @@ def model_shift_us(row, apply_codec_constant=False) -> int:
     return ms * 1000
 
 
-def collapse_duplicates(events, max_stack=DUP_MAX_STACK, max_fraction=DUP_MAX_FRACTION):
-    """Keep one of each exact duplicate (onset, end, type, location). Returns (events, n_removed) or
-    raises ValueError when stacks are too high or too frequent (performance/visual use, not a chart)."""
+def check_stacks(events, max_stack=DUP_MAX_STACK):
+    """Exact duplicates (onset, end, type, location) are intentional stacking (hit-sound weight, impact;
+    DATA_RULES v4) and are KEPT: with Phira placement left to the charter, a stack and a spread chord of
+    the same types are the same model target. Raises ValueError above max_stack (performance stacks)."""
     from collections import Counter
-    sig = lambda e: (e.onset_us, e.end_us, e.type, e.location)
-    counts = Counter(sig(e) for e in events)
-    if not counts:
-        return events, 0
-    stacked = [c for c in counts.values() if c > 1]
-    heads = len({e.onset_us for e in events})
-    dup_times = len({k[0] for k, c in counts.items() if c > 1})
-    if stacked and (max(stacked) > max_stack or dup_times / max(heads, 1) > max_fraction):
-        raise ValueError(f'duplicate stacks ineligible: max {max(stacked)}, {dup_times}/{heads} head times')
-    seen, out = set(), []
-    for e in events:
-        k = sig(e)
-        if k not in seen:
-            seen.add(k)
-            out.append(e)
-    return tuple(out), len(events) - len(out)
+    counts = Counter((e.onset_us, e.end_us, e.type, e.location) for e in events)
+    top = max(counts.values(), default=1)
+    if top > max_stack:
+        raise ValueError(f'stack of {top} identical notes exceeds {max_stack}')
+    return top
 
 
 def chart_from_canon(doc: dict, shift_us: int = 0) -> Chart:
@@ -98,12 +96,31 @@ def chart_from_canon(doc: dict, shift_us: int = 0) -> Chart:
                  Fraction(0), {}, {'source_name': doc.get('native_id', 'chart')}, (), (), doc.get('source_sha256', ''))
 
 
+class QuantArray:
+    """int8 PCA taps on a memmap, dequantised per slice (only the rows a core reads are touched)."""
+
+    def __init__(self, arr, scale):
+        self.arr, self.scale = arr, scale
+        self.shape, self.dtype = arr.shape, np.float32
+
+    def __len__(self):
+        return self.shape[0]
+
+    def __getitem__(self, idx):
+        return np.asarray(self.arr[idx], np.float32) * self.scale
+
+
 class Corpus:
-    def __init__(self, root=DATA, taps_key=None, layers=(8, 16, 24), apply_codec_constant=True):
+    def __init__(self, root=DATA, taps_key=None, layers=(8, 16, 24), apply_codec_constant=True, pca=''):
         self.root, self.taps_key, self.layers = root, taps_key, tuple(layers)
+        self.scale = {}
+        if pca:  # int8 PCA taps: per-component dequantisation scale
+            z = np.load(os.path.join(root, 'pca', f'{pca}.npz'))
+            self.scale = {l: z[f'scale_{l}'].astype(np.float32) for l in self.layers}
         self.apply_c = apply_codec_constant
         self._rows = {}
         self._charts = {}
+        self._salient = {}
 
     def train_rows(self, rows):
         out = []
@@ -128,9 +145,7 @@ class Corpus:
             doc = json.load(f)
         chart = chart_from_canon(doc, model_shift_us(r, self.apply_c))
         if dup_only(r):
-            from dataclasses import replace as _replace
-            events, _ = collapse_duplicates(chart.events)
-            chart = _replace(chart, events=events)
+            check_stacks(chart.events)
         return chart
 
     def usable(self, row) -> bool:
@@ -144,14 +159,30 @@ class Corpus:
         except ValueError:
             return False
 
+    def salient_us(self, sha):
+        """Spectral-flux peaks (same envelope as the offset diagnostic) as candidate unselected times."""
+        hit = self._salient.get(sha)
+        if hit is None:
+            from ..ingest.offset import flux_envelope, PEAK_MIN
+            env = flux_envelope(np.load(os.path.join(self.root, 'mel10', f'{sha}.npy')).astype(np.float32))
+            pk = np.where((env[1:-1] > env[:-2]) & (env[1:-1] >= env[2:]) & (env[1:-1] > PEAK_MIN))[0] + 1
+            if len(self._salient) > 256:
+                self._salient.clear()
+            hit = self._salient[sha] = (pk * 10_000).tolist()
+        return hit
+
     def mel(self, sha):
         return np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode='r')
 
-    def song(self, sha, in_memory=True) -> SongCache:
-        """in_memory: one sequential read per file (network volumes punish many small reads)."""
+    def song(self, sha, in_memory=False) -> SongCache:
+        """Memmapped by default: a core reads a few contiguous slices (16 s local audio, one reference
+        range, end blocks), far less than whole-song reads. in_memory=True loads whole files."""
         base = os.path.join(self.root, 'taps', self.taps_key, sha)
         mm = None if in_memory else 'r'
         taps = {l: np.load(os.path.join(base, f'L{l}.npy'), mmap_mode=mm) for l in self.layers}
+        for l, sc in self.scale.items():
+            if taps[l].dtype == np.int8:
+                taps[l] = QuantArray(taps[l], sc) if mm else (taps[l].astype(np.float32) * sc).astype(np.float16)
         summary = np.load(os.path.join(base, 'S20.npy'), mmap_mode=mm)
         mel = np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode=mm)
         return SongCache(taps, summary, mel, int(mel.shape[0] * 10_000))

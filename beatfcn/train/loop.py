@@ -38,8 +38,9 @@ class CoreSampler:
     """charts: list of dicts with keys chart_id, song, mode, duration_us; load(chart_id) -> Chart;
     song_cache(song) -> SongCache."""
 
-    def __init__(self, charts, load, song_cache, seed):
+    def __init__(self, charts, load, song_cache, seed, salient=None):
         self.charts, self.load, self.song_cache = charts, load, song_cache
+        self.salient = salient  # song -> spectral-flux peak times (us) for unselected reference evidence
         self.rng = np.random.default_rng(seed)
         by_mode = {}
         for c in charts:
@@ -52,7 +53,8 @@ class CoreSampler:
 
     def core(self, chart_row, seed):
         chart = self.load(chart_row['chart_id'])
-        s = sample_request(chart, seed=seed, audio_id=chart_row['song'], audio_duration_us=chart_row['duration_us'])
+        kw = {'salient_candidates_us': self.salient(chart_row['song'])} if self.salient else {}
+        s = sample_request(chart, seed=seed, audio_id=chart_row['song'], audio_duration_us=chart_row['duration_us'], **kw)
         if not s.ok:
             raise F.SkipExample('model view quarantine')
         c0 = F.choose_core(s, np.random.default_rng([seed, 1]), chart_row['duration_us'])
