@@ -7,8 +7,9 @@ This is a numerical scaffold, not a completed chart-writing model.
 - Native Pupu patch embed +24 pretrained layers, d1024,16 heads, preserved
   2D audio RoPE. Strict294-tensor loading,403,141,632 frozen parameters.
 - Audio patches AND right-shifted event-group feature tokens traverse the SAME
-  QKV, projection, normalization and SwiGLU weights in ALL24 layers, in one
-  masked shared pass. There is no independent40M event Transformer.
+  QKV, projection, normalization and SwiGLU weights in ALL24 layers. Audio is a
+  frozen, cacheable stream; trainable rows read its K/V at every layer. There
+  is no independent40M event Transformer.
 - Four NEW FULL serial blocks after6/12/18/24: pre-RMSNorm +8head×128 KDA
   residual +pre-RMSNorm +SwiGLU4096 residual. Each17,328,264 trainable params;
   all four69,313,056. This includes50,331,648 new FFN parameters.
@@ -60,61 +61,104 @@ before using that backend. Its successful T16 and cross-chunk T129 forward/state
 mandatory, matched to GPU/Torch/CUDA/Triton/BF16 and local KDA source hash. The pinned wheel signature matches the wrapper; runtime kernel/import/math
 compatibility remains a pre-GPU gate. Incremental inference cache is explicitly reference-only.
 
-## Visibility and recurrent-state schedule
+## Visibility, frozen audio stream and recurrent-state schedule
 
-Order is A (local+global music), R (paired reference feature placeholders), I
-(8 learned intent tokens), W (known/control feature placeholders), E (BOS then
-completed previous-group attributes). True boolean SDPA edges:
+Revision 2026-10-22b ("frozen audio memory"). Order is A (local music
+patches), G (global music summaries), R (paired reference features), I (8
+learned intent tokens), W (known/control features), E (BOS then completed
+previous-group attributes). Boolean SDPA edges:
 
-- A reads valid A only, including available future music, never labels/R/W/E.
-- R reads R only. Paired reference audio must be encoded in the legal R input
-  upstream; that actual reference builder is deferred.
-- I reads R/I only. W reads all legal prefix, not E.
+- A reads valid A only. A rows receive NO modality embedding and NO KDA
+  residual, so at every layer they are exactly the pretrained Pupu forward
+  (tested bit-exact against `FrozenLargeTeacher`). They never read G/R/W/E.
+- G reads A/G. R reads R only. I reads R/I only. W reads A/G/R/I/W, not E.
 - E reads all legal prefix and its own/past shifted positions. Position0=BOS
   predicts group0; positioni embeds groupi−1 and predicts groupi.
 
-At each KDA block FIVE separate shared-weight scans are used, NOT one scan
-with a claimed arbitrary mask: A alone; R alone; R→I; A→R→I→W; and
-A→R→I→W prefill then BOS/previous-groups. Each route has separate conv and
-recurrent state. The scan for each query class outputs only that class's rows.
-No reference/intent state ever accepts workspace or target data. Prefix scans
-are ordered; bidirectional legal-prefix attention is provided by Pupu SDPA,
-not invented as a property of KDA. This duplicates prefix compute and must be
-included in later performance estimates.
+All 24 shared layers still serve both streams with one QKV/projection/norm/
+SwiGLU parameter set: audio patches in the frozen stream, G/R/I/W/E rows in
+the trainable stream reading audio K/V of the SAME layer. Change from the
+first S0a revision: audio rows no longer get a trainable modality vector, no
+longer read G, and no longer receive KDA residuals. Trainable audio
+adaptation remains through each KDA block's ordered scan over audio, which
+seeds every G/W/E row.
+
+### AudioMemory: the reusable cache
+
+Because A depends only on (mel, audio_valid, frozen backbone), it is computed
+once under no_grad (`SharedModel.encode_audio`) and stored as per-layer
+post-RoPE K/V, the hidden entering each KDA insertion, and the final
+LayerNorm hidden. The same object is reused:
+
+- across training steps: trainable updates never stale it (tested by an
+  update-then-compare check), and A needs no backward or stored activations;
+- across requests/edits on the same window: edits to O/R/controls/scene only
+  rerun the trainable rows (hundreds of tokens, not 2048 audio patches).
+
+Its key hashes mel bytes, valid mask and backbone parameter identity/version/
+dtype/device. A different mel, mask or ANY backbone change (load, future LoRA,
+in-place edit) is rejected as `stale audio memory`, never silently reused.
+Future S2 LoRA on layers 21–24 must also rebuild layers ≥21 of AudioMemory.
+
+Size per 10.24 s window, BF16: 222,298,112 bytes (24 layers K/V + 4 taps +
+final). This suits an in-memory LRU per song bucket, not a corpus-wide disk
+cache (≈35 windows per 3-min song). At corpus scale training recomputes the
+frozen stream under no_grad per song bucket and reuses it across that song's
+requests.
+
+### KDA: two scans instead of five
+
+Each KDA block runs two shared-weight scans per example: (1) R then I,
+emitting R and I rows; (2) the audio-prefix state, then G,R,I,W,E, emitting
+G, W and E rows. A causal scan's output at a row depends only on earlier
+rows, so this equals the per-class routes R; R→I; A→G; A→G→R→I→W;
+A→…→E (tested against independently computed routes). R/I never see audio,
+G, workspace or targets. The audio-prefix state (`KDABlock.audio_prefix`) is
+recomputed with gradients in training and memoized in
+`AudioMemory.kda_prefix` only when autograd is off, keyed by that block's
+parameter identity/version and model revision.
 
 Per-example valid positions are compacted before recurrence, so masked tokens
 advance neither conv nor recurrent state. Batch examples start fresh. Cached
-steps retain each layer's prefix/event K/V, valid-key mask and each KDA event
-state. Cache reuse checks exact context hash, explicit revision AND parameter
-object/version fingerprints. An edited context, changed weights or different
-model rejects it; re-prefill required. Caches are inference-only, in-memory,
-not a serialized long-term cache API. Do not mutate parameters through `.data`.
+decode steps retain each layer's K/V (audio + prefix + events), valid-key mask
+and each KDA event state. Cache reuse checks exact context hash, explicit
+revision AND parameter object/version fingerprints; edits require re-prefill,
+which with AudioMemory costs only the trainable rows.
 
-Native audio gets native2D RoPE; abstract global summaries and other tokens get
-identity RoPE. Event index has learned embeddings and continuous attributes
-have an MLP. This positional choice is a scaffold, not trained alignment.
+`backend='chunk'` is an exact chunked KDA in plain PyTorch (CPU/MPS/CUDA):
+per chunk u=(I+A)^-1 diag(β)(V−K⁺S₀) via the nilpotent doubling product,
+decays only as exp(G_t−G_j≤0). It matches the step recurrence to ~1e-15 in
+float64 for outputs, final state and all gradients, keeps only chunk-boundary
+states for autograd, and is what makes the native window trainable outside
+CUDA/FLA. Routing uses index_select/index_add because advanced-index backward
+lacks BF16 on MPS (torch 2.6).
 
-S0 local input is ONE bounded native≤10.24s normalized-mel window; no16s
+Native audio gets native 2D RoPE; G and other tokens get identity RoPE. Event
+index has learned embeddings and continuous attributes have an MLP. This
+positional choice is a scaffold, not trained alignment.
+
+S0 local input is ONE bounded native≤10.24s normalized-mel window; no 16 s
 stitching, center-retain overlap policy or remote retrieval is implemented.
-Global music accepts≤600 explicit audio-only feature tokens and remains visible
-to events, including future music. Reference/known/global-token prefix≤1536;
-local raw patch tokens are counted separately. Excess raises resource_exhausted,
-never crops labels. Raw audio has8 frequency tokens per40ms. A tiny selection
-readout queries isolated intent from audio only, then averages local scores
-across8 frequencies into25Hz cells. It is untrained, not strict CF supervision
-or evidence of learned human selection. Upstream semantic provenance is the
-caller's responsibility; hidden labels must NEVER be supplied as known features.
+Global music accepts≤600 explicit audio-only feature tokens, visible to G/W/E,
+including future music. Reference/known/global-token prefix≤1536; local raw
+patch tokens are counted separately. Excess raises resource_exhausted, never
+crops labels. A tiny selection readout queries isolated intent from audio
+only, then averages local scores across 8 frequencies into 25 Hz cells. It is
+untrained, not strict CF supervision or evidence of learned human selection.
+Hidden labels must NEVER be supplied as known features.
 
-## Autograd and caches
+## Autograd
 
-Original pretrained parameters are frozen, but ALL shared layer forwards keep
-autograd. This propagates to event embeddings and each interleaved KDA. There
-is no old lower16 no_grad branch. Even audio layer1 receives trainable modality
-embedding here, so first6 activations are NOT reusable across training updates.
-H20/H24 also depend on KDA and must not be reused stale. No training activation
-cache is implemented. No LoRA in S0a.
+Original pretrained parameters are frozen. The audio stream runs under
+no_grad (it has no trainable inputs); trainable-row forwards through the same
+frozen layers keep autograd so gradients reach event/intent embeddings and
+every KDA block, including through the KDA scan over audio. No LoRA in S0a.
 
 ## What actually ran
+
+See VERIFICATION.md for the frozen-audio-memory revision (28 CPU tests and the
+native-window MPS probe). The original first-revision record follows.
+
 
 The core CPU suite contains 11 tests, reduced-width d32 BUT24 shared layers and4
 full KDA insertions. Tests cover actual full-size meta inventory; independent

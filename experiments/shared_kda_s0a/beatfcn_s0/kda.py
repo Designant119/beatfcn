@@ -1,4 +1,4 @@
-"""Kimi Delta Attention CPU reference, explicit isolated state routing.
+"""Kimi Delta Attention reference + exact chunked form, isolated state routing.
 
 Independent PyTorch implementation of published recurrence/parameterization.
 No claim that a causal scan implements an arbitrary block attention mask.
@@ -28,6 +28,43 @@ def recurrence(q,k,v,log_alpha,beta,state=None):
         s=decayed+beta[:,j,:,None,None]*k[:,j,...,None]*residual[...,None,:]
         outputs.append(((q[:,j]*(d**-.5))[...,None]*s).sum(-2))
     out=torch.stack(outputs,1) if outputs else v.new_empty(b,0,h,v.shape[-1])
+    return out.to(original),s
+
+
+def chunk_recurrence(q,k,v,log_alpha,beta,state=None,chunk=16):
+    """Exact chunked form of ``recurrence`` in plain PyTorch (CPU/MPS/CUDA).
+
+    Per chunk, u=(I+A)^-1 diag(beta)(V-K+ S0) with A_tj=beta_t k_t.(G_t-G_j decay)k_j
+    (j<t), solved by the nilpotent doubling product; only chunk-boundary states
+    are kept for autograd. Decays enter only as exp(G_t-G_j<=0), never exp(-G),
+    so strong gates cannot overflow. Pairwise decay tensor is [C,C,K] per chunk.
+    """
+    original=v.dtype
+    work=torch.float64 if q.dtype==torch.float64 else torch.float32
+    q,k,v,g,beta=[z.to(work) for z in (q,k,v,log_alpha,beta)]
+    b,t,h,d=q.shape;dv=v.shape[-1];c=chunk;n=-(-t//c);pad=n*c-t
+    if pad:
+        # Zero key/value/beta and zero log-decay leave the state untouched.
+        q,k,v,g=[F.pad(z,(0,0,0,0,0,pad)) for z in (q,k,v,g)];beta=F.pad(beta,(0,0,0,pad))
+    q,k,v,g=[z.reshape(b,n,c,h,-1).transpose(2,3) for z in (q,k,v,g)]  # B,N,H,C,D
+    beta=beta.reshape(b,n,c,h).transpose(2,3)
+    G=g.cumsum(3)
+    causal=torch.ones(c,c,dtype=torch.bool,device=q.device).tril()
+    decay=torch.where(causal[...,None],G[...,:,None,:]-G[...,None,:,:],-torch.inf).exp()
+    strict=torch.eye(c,dtype=torch.bool,device=q.device).logical_not()
+    A=torch.einsum('bnhtd,bnhjd,bnhtjd->bnhtj',k,k,decay).masked_fill(~(causal&strict),0)*beta[...,None]
+    eye=torch.eye(c,dtype=work,device=q.device);inv=eye-A;power=A;span=2
+    while span<c:power=power@power;inv=inv@(eye+power);span*=2
+    wv=inv@(beta[...,None]*v);wk=inv@(beta[...,None]*k*G.exp())
+    qk=torch.einsum('bnhtd,bnhjd,bnhtjd->bnhtj',q*d**-.5,k,decay)
+    qplus=q*G.exp()*d**-.5;tail=k*(G[...,-1:,:]-G).exp();last=G[...,-1,:].exp()
+    s=q.new_zeros(b,h,d,dv) if state is None else state.to(work)
+    outputs=[]
+    for j in range(n):
+        u=wv[:,j]-wk[:,j]@s
+        outputs.append(qplus[:,j]@s+qk[:,j]@u)
+        s=last[:,j,...,None]*s+tail[:,j].transpose(-1,-2)@u
+    out=torch.stack(outputs,1).transpose(2,3).reshape(b,n*c,h,dv)[:,:t]
     return out.to(original),s
 
 
@@ -94,7 +131,7 @@ class KDAMixer(nn.Module):
         q=F.normalize(q.float(),dim=-1,eps=1e-6).to(x.dtype);k=F.normalize(k.float(),dim=-1,eps=1e-6).to(x.dtype)
         g=-self.A_log.float().exp()[None,None,:,None]*F.softplus(self.alpha_up(self.alpha_down(x)).float().reshape_as(q)+self.dt_bias.float())
         beta=self.beta_proj(x).float().sigmoid()
-        fn=recurrence if backend=='reference' else official_fla if backend=='fla' else None
+        fn={'reference':recurrence,'chunk':chunk_recurrence,'fla':official_fla}.get(backend)
         if fn is None:raise ValueError('unknown KDA backend')
         out,s=fn(q,k,v,g,beta,None if state is None else state.recurrent)
         gate=self.gate_up(self.gate_down(x)).reshape_as(out).sigmoid()
@@ -112,37 +149,45 @@ class KDABlock(nn.Module):
     def stream(self,x,state=None,backend='reference'):
         mixed,state=self.mixer(self.norm1(x),state,backend)
         return self.finish(x,mixed),state
-    def routed(self,x,lengths,valid,backend='reference'):
-        """Five separate scans using SAME mixer weights and separate histories.
+    def audio_prefix(self,audio,audio_valid,backend='reference'):
+        """Per-example mixer state after scanning that example's valid audio.
 
-        A scan: A only. R: R only. I: R then I. W: A,R,I then W.
-        E: prefill A,R,I,W then BOS,completed-groups. All prefix rows are
-        target-independent. R/I never prefill A/W/E. The attention layers
-        provide bidirectional legal-prefix connectivity; these scans add
-        explicit ordered recurrent context (NOT arbitrary-mask equivalence).
-
-        Per-example compact valid positions ensure pad cannot advance either
-        conv or recurrence. No flattened batch scan or cross-example carry.
+        Audio rows themselves never receive this block's residual (frozen audio
+        stream); the state only seeds the ordered prefix scan of later rows.
+        Depends on frozen audio and THIS block's weights, never on labels.
         """
-        a,r,i,w,e=lengths; p=a+r+i+w
-        offsets=[0,a,a+r,a+r+i,p,p+e]
-        routes=[list(range(0,a)),list(range(a,a+r)),list(range(a,a+r+i)),list(range(0,p)),list(range(0,p+e))]
+        states=[]
+        for b in range(audio.shape[0]):
+            z=audio[b:b+1].index_select(1,torch.nonzero(audio_valid[b]).squeeze(1))
+            states.append(self.mixer(self.norm1(z),backend=backend)[1] if z.shape[1] else None)
+        return states
+    def routed(self,x,lengths,valid,prefix,backend='reference'):
+        """Two shared-weight scans over trainable rows x=[G,R,I,W,E].
+
+        Scan 1: R then I, emitting R and I rows. Scan 2: continues from the
+        audio prefix state, then G,R,I,W,E, emitting G, W and E rows. A causal
+        scan's output at a row depends only on earlier rows, so this equals the
+        separate per-class routes R; R->I; A->G; A->G->R->I->W; A->...->E while
+        sharing each prefix once. R/I never see audio, G, workspace or targets.
+        Per-example compact valid positions: pad advances no conv/recurrence.
+        """
+        g,r,i,w,e=lengths;off=[0,g,g+r,g+r+i,g+r+i+w,g+r+i+w+e]
+        def cls(j):return torch.zeros(off[-1],dtype=torch.bool,device=x.device).index_fill_(0,torch.arange(off[j],off[j+1],device=x.device),True)
+        first=cls(1)|cls(2);emit2=cls(0)|cls(3)|cls(4)
         rows=[];event_states=[]
+        # index_select/index_add only: advanced-index backward lacks BF16 on MPS.
+        # The two scans emit disjoint rows, so accumulation onto zeros is assignment.
         for b in range(x.shape[0]):
-            y=torch.zeros_like(x[b:b+1]); estate=None
-            for role,indices in enumerate(routes):
-                target_start,target_end=offsets[role],offsets[role+1]
-                ids=torch.tensor(indices,dtype=torch.long,device=x.device)
-                ids=ids[valid[b,ids]]
+            y=torch.zeros_like(x[b:b+1]);xb=x[b:b+1]
+            for scan,emit,state in ((first,first,None),(torch.ones_like(first),emit2,prefix[b])):
+                ids=torch.nonzero(scan&valid[b]).squeeze(1)
                 if not ids.numel():continue
-                z=x[b:b+1,ids]
-                mixed,state=self.mixer(self.norm1(z),backend=backend)
-                take=(ids>=target_start)&(ids<target_end)
-                if take.any():
-                    target=ids[take]
-                    y[:,target]=self.finish(x[b:b+1,target],mixed[:,take])
-                if role==4:estate=state
-            rows.append(y);event_states.append(estate)
-        # Event suffix always has BOS, so every example has valid event state.
+                mixed,out_state=self.mixer(self.norm1(xb.index_select(1,ids)),state,backend)
+                take=torch.nonzero(emit[ids]).squeeze(1)
+                if take.numel():
+                    target=ids.index_select(0,take)
+                    y=y.index_add(1,target,self.finish(xb.index_select(1,target),mixed.index_select(1,take)))
+            rows.append(y);event_states.append(out_state)
+        # Event suffix always has BOS, so scan 2 always ran and holds the E state.
         state=StreamState(torch.cat([s.recurrent for s in event_states],0),tuple(torch.cat([s.convolutions[j] for s in event_states],0) for j in range(3)))
         return torch.cat(rows,0),state

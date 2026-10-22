@@ -3,7 +3,7 @@ import unittest
 import torch
 from torch.nn import functional as F
 from beatfcn_s0.model import SharedModel,Config,Context
-from beatfcn_s0.kda import recurrence,KDAMixer
+from beatfcn_s0.kda import recurrence,chunk_recurrence,KDAMixer,KDABlock
 
 torch.set_num_threads(2)
 
@@ -59,7 +59,9 @@ class S0Tests(unittest.TestCase):
         loss=sum(out[n].square().mean() for n in ['action','coarse','fine','selection'])
         loss.backward()
         for j,entries in seen.items():
-            self.assertEqual(len(entries),1);self.assertEqual(entries[0][0],id(m.backbone.teacher.blocks[j].attn.qkv.weight));self.assertEqual(entries[0][1],21)
+            # Frozen audio stream (8 patches) and trainable rows (13) use one module.
+            self.assertEqual([n for _,n in entries],[8,13])
+            self.assertTrue(all(w==id(m.backbone.teacher.blocks[j].attn.qkv.weight) for w,_ in entries))
         missing=[]
         for n,p in m.named_parameters():
             if p.requires_grad:
@@ -128,5 +130,84 @@ class S0Tests(unittest.TestCase):
         self.assertGreater((a['action']-b['action']).abs().max().item(),1e-5)
         c.global_music=torch.zeros(1,601,32)
         with self.assertRaisesRegex(ValueError,'bounded audio'):m(c,y)
+
+    def test_chunk_recurrence_exact_forward_state_grad(self):
+        torch.manual_seed(5)
+        for t,chunk,scale in [(37,16,1.),(64,16,8.),(5,8,1.)]:
+            q,k,v,raw=[torch.randn(2,t,3,8,dtype=torch.float64,requires_grad=True) for _ in range(4)]
+            beta=torch.rand(2,t,3,dtype=torch.float64,requires_grad=True);s0=torch.randn(2,3,8,8,dtype=torch.float64,requires_grad=True)
+            run=lambda fn,**kw:fn(F.normalize(q,dim=-1),F.normalize(k,dim=-1),v,-F.softplus(raw)*scale,beta,s0,**kw)
+            (o1,s1),(o2,s2)=run(recurrence),run(chunk_recurrence,chunk=chunk)
+            torch.testing.assert_close(o2,o1,atol=1e-12,rtol=1e-12);torch.testing.assert_close(s2,s1,atol=1e-12,rtol=1e-12)
+            w=torch.randn_like(o1);ws=torch.randn_like(s1);xs=(q,k,v,raw,beta,s0)
+            for x,y in zip(torch.autograd.grad((o1*w).sum()+(s1*ws).sum(),xs),torch.autograd.grad((o2*w).sum()+(s2*ws).sum(),xs)):
+                torch.testing.assert_close(y,x,atol=1e-11,rtol=1e-11)
+
+    def test_two_scan_routing_equals_independent_routes(self):
+        torch.manual_seed(9);blk=KDABlock(32,4,64).double()
+        lengths=(2,3,2,2,4);audio=torch.randn(2,6,32,dtype=torch.float64);x=torch.randn(2,13,32,dtype=torch.float64)
+        av=torch.tensor([[1,1,0,1,1,1],[1,1,1,1,1,1]],dtype=torch.bool);valid=torch.ones(2,13,dtype=torch.bool);valid[0,3]=False
+        y,state=blk.routed(x,lengths,valid,blk.audio_prefix(audio,av))
+        g,r,i,w,e=lengths;off=[0,g,g+r,g+r+i,g+r+i+w,13]
+        # Spec routes, each a fresh scan: G:A,G  R:R  I:R,I  W:A,G,R,I,W  E:A,...,E
+        routes={0:(True,[0]),1:(False,[1]),2:(False,[1,2]),3:(True,[0,1,2,3]),4:(True,[0,1,2,3,4])}
+        for b in range(2):
+            for role,(use_audio,classes) in routes.items():
+                ids=[t for c in classes for t in range(off[c],off[c+1]) if valid[b,t]]
+                z=torch.cat([audio[b:b+1,av[b]] if use_audio else audio[b:b+1,:0],x[b:b+1,ids]],1)
+                mixed,last=blk.mixer(blk.norm1(z))
+                own=[n for n,t in enumerate(ids) if off[role]<=t<off[role+1]]
+                rows=[ids[n] for n in own];shift=z.shape[1]-len(ids)
+                # Mixer rounds q/k/gates through FP32 by design; BLAS shape-dependent
+                # last bits can flip one FP32 rounding, hence 1e-6 not 1e-12.
+                torch.testing.assert_close(y[b:b+1,rows],blk.finish(x[b:b+1,rows],mixed[:,[shift+n for n in own]]),atol=1e-6,rtol=1e-6)
+                if role==4:torch.testing.assert_close(state.recurrent[b:b+1],last.recurrent,atol=1e-6,rtol=1e-6)
+            self.assertEqual(torch.count_nonzero(y[0,3]).item(),0)
+
+    def test_audio_stream_is_exact_pretrained_pupu(self):
+        m,c,y=fixture();m.eval()
+        with torch.no_grad():
+            mem=m.encode_audio(c.local_mel);ref=m.backbone(c.local_mel,return_tokens=True)
+        torch.testing.assert_close(mem.final.reshape(ref.shape),ref,atol=0,rtol=0)
+
+    def test_audio_memory_reused_across_updates_and_requests(self):
+        m,c,y=fixture();mem=m.encode_audio(c.local_mel)
+        self.assertFalse(any(t.requires_grad for kv in mem.kv for t in kv))
+        out=m(c,y,audio=mem);sum(out[n].square().mean() for n in ['action','coarse','fine','selection']).backward()
+        with torch.no_grad():
+            for prm in m.parameters():
+                if prm.requires_grad:prm.add_(prm.grad,alpha=-.5)
+        m.mark_updated();m.eval()
+        with torch.no_grad():
+            fresh=m.encode_audio(c.local_mel)
+            for (k0,v0),(k1,v1) in zip(mem.kv,fresh.kv):torch.testing.assert_close(k0,k1,atol=0,rtol=0);torch.testing.assert_close(v0,v1,atol=0,rtol=0)
+            reused=m(c,y,audio=mem);rebuilt=m(c,y)
+            for n in ['action','coarse','fine','selection','intent']:torch.testing.assert_close(reused[n],rebuilt[n],atol=0,rtol=0)
+            # Changing only workspace/reference keeps the same audio memory valid.
+            c2=copy.deepcopy(c);c2.known+=3;c2.reference-=1;m(c2,y,audio=mem)
+            c3=copy.deepcopy(c);c3.local_mel[:,:,0,0]+=1
+            with self.assertRaisesRegex(ValueError,'stale audio memory'):m(c3,y,audio=mem)
+            m.backbone.teacher.blocks[0].attn.qkv.weight.add_(0)
+            with self.assertRaisesRegex(ValueError,'stale audio memory'):m(c,y,audio=mem)
+
+    def test_inference_kda_prefix_memo_and_invalidation(self):
+        m,c,y=fixture();m.eval()
+        with torch.no_grad():
+            mem=m.encode_audio(c.local_mel);first=m(c,y,audio=mem);self.assertEqual(len(mem.kda_prefix),4)
+            again=m(c,y,audio=mem);torch.testing.assert_close(first['action'],again['action'],atol=0,rtol=0)
+            m.kda_blocks[1].mixer.A_log.add_(.3);changed=m(c,y,audio=mem);clean=m(c,y)
+            torch.testing.assert_close(changed['action'],clean['action'],atol=0,rtol=0);self.assertEqual(len(mem.kda_prefix),4)
+        out=m(c,y,audio=mem)  # autograd on: fresh prefix with grad, memo untouched
+        self.assertTrue(out['action'].requires_grad)
+
+    def test_chunk_backend_matches_reference_model_and_decode(self):
+        m,c,y=fixture();m.eval()
+        with torch.no_grad():
+            ref=m(c,y);chk=m(c,y,backend='chunk')
+            for n in ['action','coarse','fine','selection']:torch.testing.assert_close(chk[n],ref[n],atol=2e-5,rtol=2e-4)
+            cache=m(c,y[:,:0],return_cache=True,backend='chunk')['cache']
+            for t in range(y.shape[1]):
+                out=m.step(c,y[:,t],cache);cache=out['cache']
+                torch.testing.assert_close(out['action'],ref['action'][:,t+1:t+2],atol=2e-5,rtol=2e-4)
 
 if __name__=='__main__':unittest.main(verbosity=2)

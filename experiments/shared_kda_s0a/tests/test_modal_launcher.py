@@ -10,6 +10,9 @@ import time
 import unittest
 from unittest.mock import patch
 
+# macOS /tmp and /var are symlinks; the launcher rejects symlinked paths by design.
+REAL_TMP = Path(tempfile.gettempdir()).resolve()
+
 ROOT = Path(__file__).resolve().parents[1]
 
 def load(name):
@@ -72,7 +75,7 @@ class LauncherContract(unittest.TestCase):
         with patch.object(launcher, 'require_sdk', side_effect=AssertionError('must not reach SDK')):
             for action in ('upload-assets', 'prepare', 'probe', 'cleanup'):
                 with self.subTest(action=action), self.assertRaises((SystemExit, FileNotFoundError)):
-                    launcher.main([action, '--state', '/tmp/does-not-exist-s0a-test.json'])
+                    launcher.main([action, '--state', str(REAL_TMP / 'does-not-exist-s0a-test.json')])
 
     def test_reject_alternate_modal_endpoint(self):
         with patch.dict(os.environ, {'MODAL_SERVER_URL': 'https://api.modal2.com'}):
@@ -89,15 +92,16 @@ class LauncherContract(unittest.TestCase):
                 launcher.validate_run_id(name)
 
     def test_source_symlink_denied(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as d:
             a = Path(d) / 'a.py'; a.write_text('pass\n')
+            launcher.safe_file(a)  # the real file passes; only the link must fail
             b = Path(d) / 'b.py'; b.symlink_to(a)
             with self.assertRaises(ValueError):
                 launcher.safe_file(b)
 
     def test_manifest_scope_rejects_before_reading_assets(self):
         m = {'schema': 1, 'source_files': launcher.sources(), 'assets': []}
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as d:
             p = Path(d) / 'manifest.json'; p.write_text(json.dumps(m))
             with self.assertRaisesRegex(ValueError, 'Exactly'):
                 launcher.checked_manifest(p, check_local_assets=False)

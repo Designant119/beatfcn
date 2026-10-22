@@ -7,6 +7,12 @@
 - Static Modal 1.6.2 API option construction was checked with socket connections disabled. This did not enter app.run, build, spawn or remote execution. See `reports/modal_sdk_static_check.txt`.
 - The full-size real-weight CPU probe loaded 294 tensors and performed one BF16 update on 40 ms of real audio plus synthetic conditions/targets. See `reports/real_weight_cpu_probe.json`. That earlier audio fixture was not the new Higher GPU candidate. The report is not a native-window benchmark or supervised chart result.
 
+## Frozen audio memory revision (2026-10-22b)
+
+- CPU suite now 28 tests. Added: chunked KDA equals the step recurrence (float64, outputs/final state/all gradients, padding, initial state, strong decay); two-scan routing equals independently computed per-class routes; local audio stream bit-exact to the pretrained `FrozenLargeTeacher`; AudioMemory has no autograd, survives an SGD update bit-exactly, is reusable across workspace/reference edits, and is rejected after mel or backbone change; KDA audio-prefix memo is invalidated by KDA weight change and bypassed under autograd; chunk backend matches reference for full forward and cached decode. Launcher tests now resolve the real temp dir (macOS `/tmp`/`/var` are symlinks; the symlink guard itself is unchanged).
+- Full-size native-window probe on Apple GPU (MPS, BF16, synthetic audio/events, `--backend chunk`): see `reports/mps_native_probe.json`, including a same-shape timing comparison against the first S0a revision. MPS has no peak counter; memory figures are allocator samples at phase boundaries.
+- Not established by this revision: CUDA/FLA parity (FLA path now receives an initial state from the audio prefix; still CUDA-gated and untested), real Higher audio, SFT, quality, 4 GB feasibility.
+
 ## Public-package checks
 
 The sanitized public copy is rerun through the complete CPU suite and local help/plan before publication. `reports/public_cpu_tests.txt` records that result. Only source/docs/tests and sanitized technical evidence are included. The source manifest records each published file's SHA256; it intentionally excludes itself.

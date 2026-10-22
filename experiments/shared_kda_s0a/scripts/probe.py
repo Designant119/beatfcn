@@ -16,12 +16,14 @@ def sha(path):
     return h.hexdigest()
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--checkpoint',required=True);p.add_argument('--device',choices=['cpu','cuda'],default='cpu');p.add_argument('--backend',choices=['reference','fla'],default='reference');p.add_argument('--audio');p.add_argument('--audio-offset-seconds',type=float,default=15.0);p.add_argument('--mel-frames',type=int,default=4);p.add_argument('--groups',type=int,default=2);p.add_argument('--steps',type=int,default=1);p.add_argument('--output',default='reports/probe.json');p.add_argument('--expected-sha256',default=EXPECTED);p.add_argument('--parity-report')
+    p=argparse.ArgumentParser();p.add_argument('--checkpoint',required=True);p.add_argument('--device',choices=['cpu','cuda','mps'],default='cpu');p.add_argument('--backend',choices=['reference','chunk','fla'],default='reference');p.add_argument('--audio');p.add_argument('--audio-offset-seconds',type=float,default=15.0);p.add_argument('--mel-frames',type=int,default=4);p.add_argument('--groups',type=int,default=2);p.add_argument('--steps',type=int,default=1);p.add_argument('--output',default='reports/probe.json');p.add_argument('--expected-sha256',default=EXPECTED);p.add_argument('--parity-report')
     a=p.parse_args()
     if not math.isfinite(a.audio_offset_seconds) or a.audio_offset_seconds<0:p.error('audio offset must be finite and nonnegative')
-    max_frames=1024 if a.device=='cuda' and a.backend=='fla' else 64
+    # Native window needs a chunked scan: FLA on CUDA, or the exact PyTorch chunk form.
+    max_frames=1024 if (a.device=='cuda' and a.backend=='fla') or a.backend=='chunk' else 64
     if not (4<=a.mel_frames<=max_frames and a.mel_frames%4==0 and 1<=a.groups<=8 and 1<=a.steps<=3):p.error(f'bounded S0a: frames4..{max_frames} multiple4;groups1..8;steps1..3')
     if a.device=='cuda' and not torch.cuda.is_available():raise RuntimeError('CUDA unavailable; no fallback GPU claim')
+    if a.device=='mps' and not torch.backends.mps.is_available():raise RuntimeError('MPS unavailable; no fallback GPU claim')
     if a.backend=='fla' and a.device!='cuda':p.error('FLA requires CUDA')
     if a.backend=='fla':
         if importlib.metadata.version('fla-core')!='0.5.2':raise RuntimeError('required pinned fla-core==0.5.2')
@@ -29,7 +31,13 @@ def main():
         parity=json.loads(Path(a.parity_report).read_text())
         if parity.get('tested_lengths')!=[16,129] or not parity.get('passed') or parity.get('fla_core')!='0.5.2' or parity.get('torch')!=torch.__version__ or parity.get('gpu')!=torch.cuda.get_device_name() or parity.get('cuda')!=torch.version.cuda or parity.get('triton')!=importlib.metadata.version('triton') or parity.get('dtype')!='bfloat16' or parity.get('kda_source_sha256')!=sha(Path(__file__).resolve().parents[1]/'beatfcn_s0/kda.py'):raise RuntimeError('parity report mismatch; stop rather than fallback')
     torch.manual_seed(20261022);torch.set_num_threads(2)
-    report={'scope':'S0a full-size shared numerical probe, synthetic event/condition features, NOT S0b training','torch':torch.__version__,'python':platform.python_version(),'device':a.device,'backend':a.backend,'mel_frames':a.mel_frames,'previous_groups':a.groups,'steps':a.steps,'dtype':'bfloat16','native_window_test':a.mel_frames==1024,'parity_report':a.parity_report,'gpu_measured':a.device=='cuda','cuda_peak_allocated':None,'cuda_peak_reserved':None}
+    report={'scope':'S0a full-size shared numerical probe, synthetic event/condition features, NOT S0b training','torch':torch.__version__,'python':platform.python_version(),'device':a.device,'backend':a.backend,'mel_frames':a.mel_frames,'previous_groups':a.groups,'steps':a.steps,'dtype':'bfloat16','native_window_test':a.mel_frames==1024,'parity_report':a.parity_report,'gpu_measured':a.device in ('cuda','mps'),'cuda_peak_allocated':None,'cuda_peak_reserved':None,'mps_samples':[]}
+    def sync():
+        if a.device=='cuda':torch.cuda.synchronize()
+        if a.device=='mps':torch.mps.synchronize()
+    def sample(phase):
+        # MPS has no peak counter: record allocator state at the likely peaks.
+        if a.device=='mps':sync();report['mps_samples'].append({'phase':phase,'current_allocated':torch.mps.current_allocated_memory(),'driver_allocated':torch.mps.driver_allocated_memory()})
     start=time.perf_counter();digest=sha(a.checkpoint)
     if digest!=a.expected_sha256:raise ValueError('checkpoint SHA256 mismatch')
     report['checkpoint_sha256']=digest;report['checkpoint_sha256_verified']=True
@@ -56,12 +64,15 @@ def main():
         report['versions']['cuda']=torch.version.cuda
         report['versions']['triton']=importlib.metadata.version('triton')
     if a.backend=='fla':report['versions']['fla-core']=importlib.metadata.version('fla-core')
+    sample('loaded');sync();t=time.perf_counter();memory=model.encode_audio(c.local_mel);sync()
+    report['audio_encode_seconds']=time.perf_counter()-t;report['audio_memory_bytes']=memory.nbytes();sample('audio_memory')
     for step in range(a.steps):
-        model.zero_grad(set_to_none=True);t=time.perf_counter();out=model(c,y,backend=a.backend)
+        # Frozen audio memory is reused across updates; only trainable rows rerun.
+        model.zero_grad(set_to_none=True);sync();t=time.perf_counter();out=model(c,y,audio=memory,backend=a.backend);sample(f'step{step}_forward')
         loss=sum(out[n].float().square().mean() for n in ['action','coarse','fine','selection'])
         if not torch.isfinite(loss) or any(not torch.isfinite(out[n]).all() for n in ['action','coarse','fine','selection']):raise RuntimeError('nonfinite outputs or loss; stop')
-        loss.backward()
-        if a.device=='cuda':torch.cuda.synchronize()
+        loss.backward();sample(f'step{step}_backward')
+        sync()
         elapsed=time.perf_counter()-t
         grad={};missing=[];bad=[];frozen_grad=[]
         for n,param in model.named_parameters():
@@ -82,6 +93,12 @@ def main():
         if not changed:raise RuntimeError('new parameter did not update')
         report['iterations'].append({'loss':loss.item(),'forward_backward_seconds':elapsed,'gradient_l2':{k:v**.5 for k,v in grad.items()},'new_weight_changed':changed,'missing_gradients':missing,'nonfinite_gradients':bad,'frozen_gradients':frozen_grad})
         del out,loss
+    model.eval();timings=[]
+    with torch.no_grad():
+        for label in ('edit_first_kda_prefix_fill','edit_memo_hit'):
+            sync();t=time.perf_counter();model(c,y,audio=memory,backend=a.backend);sync();timings.append((label,time.perf_counter()-t))
+        sync();t=time.perf_counter();model(c,y,backend=a.backend);sync();timings.append(('no_memory_full_reencode',time.perf_counter()-t))
+    report['inference_seconds']=dict(timings);sample('inference')
     report['frozen_sample_values_unchanged']=all(torch.equal(frozen_before[n],p.detach().flatten()[::max(1,p.numel()//7)]) for n,p in model.backbone.named_parameters())
     # All frozen tensors excluded from updates by construction; sampled equality
     # is not mislabeled a full post-run tensor hash proof.

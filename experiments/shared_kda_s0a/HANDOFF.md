@@ -10,12 +10,12 @@ This directory is additive and isolated. The repository's existing `main` files 
 - Both audio patches and right-shifted event-group feature tokens traverse the same QKV, projection, normalization and SwiGLU weights in all 24 layers.
 - Four new **full** serial KDA blocks after layers 6, 12, 18 and 24: pre-RMSNorm + 8 x 128 KDA residual, then pre-RMSNorm + SwiGLU-4096 residual. These are not attention-only inserts.
 - Total 476,739,917 parameters; trainable 73,598,285. Four KDA blocks account for 69,313,056 trainable parameters; feature/intent/selection/probe heads account for 4,285,229. No LoRA in S0a.
-- The scaffold implements visibility-isolated attention and five independent shared-weight recurrent scans. It does not pretend a causal recurrence can implement an arbitrary mask. See `ARCHITECTURE.md`.
-- No reusable training activation cache exists. Trainable embeddings/KDA affect the shared forward; do not reuse stale lower-layer or H20/H24 activations across updates.
+- The scaffold implements visibility-isolated attention and two shared-weight KDA scans per block (R→I; audio prefix→G→R→I→W→E), exactly equal to the five per-class routes of the first revision. It does not pretend a causal recurrence can implement an arbitrary mask. See `ARCHITECTURE.md`.
+- Revision 2026-10-22b, frozen audio memory: audio rows read only audio and receive no modality/KDA residual, so every layer equals pretrained Pupu. `SharedModel.encode_audio` builds an `AudioMemory` once under no_grad; it is reused across training steps and edits and rejected if mel, mask or any backbone weight changes. Trainable rows (G/R/I/W/E) still traverse all 24 shared layers and read audio K/V at each layer.
 
-Passed: 22 CPU tests; static Modal SDK 1.6.2 option construction without sockets; strict full-size checkpoint loading and one short CPU BF16 forward/backward/manual-SGD update. That historical real-weight probe used only 4 mel frames (40 ms) of real audio and synthetic event/condition heads. It is **not** SFT, learned chart quality, a complete native-window benchmark, or proof of 4 GB feasibility.
+Passed: 28 CPU tests (22 original, adjusted for the frozen audio stream, plus chunked-KDA exactness, two-scan route equivalence, bit-exact Pupu audio stream, AudioMemory reuse/invalidation, KDA prefix memo, chunk backend decode); static Modal SDK 1.6.2 option construction without sockets; strict full-size checkpoint loading and one short CPU BF16 forward/backward/manual-SGD update (historical, 4 mel frames). New: full-size native 10.24 s BF16 forward/backward/manual-SGD on Apple GPU (MPS) with `--backend chunk` and synthetic audio/events; see `reports/mps_native_probe.json`. None of this is SFT, learned chart quality, or proof of 4 GB feasibility.
 
-Not run: Modal upload/build/CPU preparation/GPU execution, CUDA/FLA numerical parity, native 10.24-second peak memory or runtime. The preparing executor could not access the official Modal API under its network policy. Use only a legitimate supported connection on the operator machine; do not bypass an access denial.
+Not run: Modal upload/build/CPU preparation/GPU execution, CUDA/FLA numerical parity, CUDA native-window peak memory or runtime, the Higher real-audio excerpt (private input not present on the operator machine yet). Use only a legitimate supported connection on the operator machine; do not bypass an access denial.
 
 ## 2. Inputs: never commit their bytes
 
@@ -81,6 +81,14 @@ python scripts/probe.py --checkpoint /absolute/path/teacher_encoder.safetensors 
 ```
 
 That remains a numerical smoke with synthetic heads, not training or quality evaluation.
+
+Native-window probe on Apple Silicon (MPS, no CUDA/FLA, no cost). Uses the exact chunked PyTorch KDA; FLA parity remains a CUDA-only gate:
+
+```sh
+python scripts/probe.py --checkpoint /absolute/path/teacher_encoder.safetensors --device mps --backend chunk --mel-frames 1024 --groups 2 --steps 2 --output reports/probe_mps_1024.json
+```
+
+Add `--audio /absolute/path/higher_audio.mp3 --audio-offset-seconds 15` once the private input is available. On macOS, keep manifests/billing records outside `/tmp` and `/var` (both are symlinks; the launcher rejects symlinked paths by design).
 
 ## 4. Authorized bounds and required preflight
 
