@@ -40,16 +40,21 @@ def batch(n=4, seed=0):
 
 class P1Tests(unittest.TestCase):
     def test_forward_backward_all_fields(self):
-        torch.manual_seed(0)
-        m = P1Model(CFG)
+        import dataclasses
         bt = batch(6)
-        loss, met = m(bt)
-        self.assertTrue(torch.isfinite(loss))
-        for k in ('time', 'residual', 'cont', 'type', 'lane', 'line', 'side', 'x', 'end_block', 'end_coarse', 'end_fine'):
-            self.assertIn(k, met)
-        loss.backward()
-        none = [n for n, p in m.named_parameters() if p.grad is None or not torch.isfinite(p.grad).all()]
-        self.assertEqual(none, [])
+        placement = {'line_q', 'line_tab', 'side_h', 'x_h'}
+        for loc in (False, True):
+            torch.manual_seed(0)
+            m = P1Model(dataclasses.replace(CFG, phira_location=loc))
+            loss, met = m(bt)
+            self.assertTrue(torch.isfinite(loss))
+            for k in ('time', 'residual', 'cont', 'type', 'lane', 'end_block', 'end_coarse', 'end_fine'):
+                self.assertIn(k, met)
+            for k in ('line', 'side', 'x'):
+                self.assertEqual(k in met, loc)
+            loss.backward()
+            none = {n.split('.')[0] for n, p in m.named_parameters() if p.grad is None or not torch.isfinite(p.grad).all()}
+            self.assertEqual(none, set() if loc else placement)
 
     def test_future_groups_do_not_change_earlier_time_logits(self):
         torch.manual_seed(1)

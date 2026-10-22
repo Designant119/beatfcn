@@ -109,6 +109,8 @@ def _inner(model, bt, h, pa, fi, t_rel, right_new, busy, song, ex, t_abs, holds,
             n['lane'] = _pick(model.lane_h(torch.cat([o1, used[None].float().to(device)], -1))[0].cpu(), ~used, rng, temperature, top_p, greedy)
             loc = torch.cat([F.one_hot(torch.tensor([n['lane']]), 4).float(), torch.zeros(1, 60)], -1).to(device)
             used[n['lane']] = True
+        elif not c.phira_location:
+            loc = torch.zeros(1, 64, device=device)  # placement left to the charter (design §1.3 revision)
         else:
             lines = int(bt['lines'][0])
             lmask = torch.arange(FE.MAX_LINES) < max(lines, 1)

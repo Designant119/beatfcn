@@ -507,7 +507,7 @@ def main(osu_shards: str = '', phira_limit: int = 0, out: str = 'reports/ingest_
     with open('phira_all_charts.jsonl') as f:
         for line in f:
             r = json.loads(line)
-            if (r.get('rating') or 0) >= 0.93 and (r.get('ratingCount') or 0) >= 200:  # DATA_RULES §1, 宁缺毋滥
+            if (r.get('rating') or 0) >= 0.92 and (r.get('ratingCount') or 0) >= 100:  # DATA_RULES §1 v3 (~3k train charts)
                 cands.append({k: r.get(k) for k in ('id', 'name', 'level', 'charter', 'composer', 'file', 'rating',
                                                     'ratingCount', 'chartUpdated')})
     if phira_limit:

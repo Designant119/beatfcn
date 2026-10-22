@@ -43,6 +43,7 @@ class P1Config:
     gru: int = 256
     intent: int = 8
     mixture: int = 5
+    phira_location: bool = False  # Phira line/side/x are inputs only, never predicted (user decision 2026-10-23)
     k_window: tuple = (-2.0, 2.0)
     y_window: tuple = (-1.0, 3.0)
 
@@ -252,8 +253,18 @@ class P1Model(nn.Module):
         valid = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=Y.device), bt['grp_valid']], 1)
         return Y, t, valid
 
+    def _target_loc(self, bt):
+        """Locations of generated groups as the model will see them: Phira placement is unknown
+        unless phira_location (inference cannot feed back what it never predicts)."""
+        line, side, x = bt['note_line'], bt['note_side'], bt['note_x']
+        if not self.c.phira_location:
+            ph = (bt['mode'] == 1)[:, None, None]
+            line, side, x = line.masked_fill(ph, -1), side.masked_fill(ph, -1), x.masked_fill(ph, 0.0)
+        return line, side, x
+
     def group_embedding(self, bt):
-        e = self._note_emb(bt['note_type'], bt['note_lane'], bt['note_line'], bt['note_side'], bt['note_x'], bt['note_dur'])
+        line, side, x = self._target_loc(bt)
+        e = self._note_emb(bt['note_type'], bt['note_lane'], line, side, x, bt['note_dur'])
         nm = (torch.arange(MAX_NOTES, device=e.device)[None, None] < bt['grp_n'][..., None])[..., None]
         s = (e * nm).sum(2)
         m = e.masked_fill(~nm, NEG).max(2).values.masked_fill(~nm.any(2), 0)
@@ -405,8 +416,10 @@ class P1Model(nn.Module):
         dev = h.device
         hs = self.gru_init(h[bi, gi], ptr_audio[bi], fine[bi], bt['grp_t'][bi, gi], bt['right_new'][bi, gi], bt['busy'][bi, gi])
         n_notes = bt['grp_n'][bi, gi]
-        typ, lane, line = bt['note_type'][bi, gi], bt['note_lane'][bi, gi], bt['note_line'][bi, gi]
-        side, x, dur = bt['note_side'][bi, gi], bt['note_x'][bi, gi], bt['note_dur'][bi, gi]
+        tl, ts, tx = self._target_loc(bt)
+        typ, lane, line = bt['note_type'][bi, gi], bt['note_lane'][bi, gi], tl[bi, gi]
+        side, x, dur = ts[bi, gi], tx[bi, gi], bt['note_dur'][bi, gi]
+        true_line, true_side, true_x = bt['note_line'][bi, gi], bt['note_side'][bi, gi], bt['note_x'][bi, gi]
         mode = bt['mode'][bi]
         allowed = bt['allowed_types'][bi] & torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.bool, device=dev)[mode]
         n_lines = bt['lines'][bi]
@@ -429,13 +442,16 @@ class P1Model(nn.Module):
             is_m, is_p = emit & (mode == 0), emit & (mode == 1)
             lane_mask = ~used
             acc['lane'].append((self.lane_h(torch.cat([o1, used.float()], -1)), lane[:, j].clamp(min=0), is_m, lane_mask))
-            line_logits = self.line_q(o1) @ self.line_tab.weight.T
-            line_mask = torch.arange(FE.MAX_LINES, device=dev)[None] < n_lines[:, None]
-            acc['line'].append((line_logits, line[:, j].clamp(min=0), is_p, line_mask))
-            le = self.line_tab(line[:, j].clamp(0, FE.MAX_LINES - 1))
-            acc['side'].append((self.side_h(torch.cat([o1, le], -1)), side[:, j].clamp(min=0), is_p, None))
-            if is_p.any():
-                x_nll.append(logistic_mixture_nll(self.x_h(torch.cat([o1, le], -1))[is_p], x[is_p, j]))
+            if self.c.phira_location:
+                line_logits = self.line_q(o1) @ self.line_tab.weight.T
+                line_mask = torch.arange(FE.MAX_LINES, device=dev)[None] < n_lines[:, None]
+                acc['line'].append((line_logits, true_line[:, j].clamp(min=0), is_p, line_mask))
+                le = self.line_tab(true_line[:, j].clamp(0, FE.MAX_LINES - 1))
+                acc['side'].append((self.side_h(torch.cat([o1, le], -1)), true_side[:, j].clamp(min=0), is_p, None))
+                if is_p.any():
+                    x_nll.append(logistic_mixture_nll(self.x_h(torch.cat([o1, le], -1))[is_p], true_x[is_p, j]))
+            else:
+                le = torch.zeros(N, 64, device=dev)  # Phira placement unknown to the generator
             loc = torch.where(mode[:, None] == 0, torch.cat([F.one_hot(lane[:, j].clamp(min=0), 4).float(),
                                                              torch.zeros(N, 60, device=dev)], -1), le)
             o2 = o1 + self.loc_c(torch.cat([loc, self.side_e((side[:, j] + 1).clamp(0, 2)), x[:, j, None]], -1))

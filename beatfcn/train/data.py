@@ -17,12 +17,23 @@ from ..model.batch import SongCache
 DATA = '/data'
 
 
-def load_manifest(root=DATA, split=None, kept_only=True, select=True):
+DUP_REASONS = {'duplicate_object', 'duplicate_object_in_source'}
+DUP_MAX_STACK = 4
+DUP_MAX_FRACTION = 0.01
+
+
+def dup_only(r) -> bool:
+    """Quarantined solely for exact duplicate notes (candidate for model-view collapse, DATA_RULES v3)."""
+    reasons = set(r.get('quarantine_reasons') or [])
+    return r.get('status') == 'parsed' and bool(reasons) and reasons <= DUP_REASONS
+
+
+def load_manifest(root=DATA, split=None, kept_only=True, select=True, dup_collapse=True):
     rows = []
     with open(os.path.join(root, 'manifest', 'charts.jsonl')) as f:
         for line in f:
             r = json.loads(line)
-            if kept_only and not r.get('kept'):
+            if kept_only and not r.get('kept') and not (dup_collapse and dup_only(r)):
                 continue
             if split and r.get('split') != split:
                 continue
@@ -32,8 +43,8 @@ def load_manifest(root=DATA, split=None, kept_only=True, select=True):
     return rows
 
 
-PHIRA_MIN_RATING = 0.93
-PHIRA_MIN_VOTES = 200
+PHIRA_MIN_RATING = 0.92
+PHIRA_MIN_VOTES = 100
 OSU_APPROVED = (1, 2)  # ranked, approved; loved (4) excluded (DATA_RULES §1)
 
 
@@ -50,6 +61,28 @@ def model_shift_us(row, apply_codec_constant=False) -> int:
     d = row.get('offset_decision') or {}
     ms = int(d.get('shift_ms') or 0) + (int(d.get('c_ms') or 0) if apply_codec_constant else 0)
     return ms * 1000
+
+
+def collapse_duplicates(events, max_stack=DUP_MAX_STACK, max_fraction=DUP_MAX_FRACTION):
+    """Keep one of each exact duplicate (onset, end, type, location). Returns (events, n_removed) or
+    raises ValueError when stacks are too high or too frequent (performance/visual use, not a chart)."""
+    from collections import Counter
+    sig = lambda e: (e.onset_us, e.end_us, e.type, e.location)
+    counts = Counter(sig(e) for e in events)
+    if not counts:
+        return events, 0
+    stacked = [c for c in counts.values() if c > 1]
+    heads = len({e.onset_us for e in events})
+    dup_times = len({k[0] for k, c in counts.items() if c > 1})
+    if stacked and (max(stacked) > max_stack or dup_times / max(heads, 1) > max_fraction):
+        raise ValueError(f'duplicate stacks ineligible: max {max(stacked)}, {dup_times}/{heads} head times')
+    seen, out = set(), []
+    for e in events:
+        k = sig(e)
+        if k not in seen:
+            seen.add(k)
+            out.append(e)
+    return tuple(out), len(events) - len(out)
 
 
 def chart_from_canon(doc: dict, shift_us: int = 0) -> Chart:
@@ -93,7 +126,23 @@ class Corpus:
         r = self._rows[chart_id]
         with open(os.path.join(self.root, 'canon', r['source'], f"{r['native_id']}.json")) as f:
             doc = json.load(f)
-        return chart_from_canon(doc, model_shift_us(r, self.apply_c))
+        chart = chart_from_canon(doc, model_shift_us(r, self.apply_c))
+        if dup_only(r):
+            from dataclasses import replace as _replace
+            events, _ = collapse_duplicates(chart.events)
+            chart = _replace(chart, events=events)
+        return chart
+
+    def usable(self, row) -> bool:
+        """False for duplicate-only charts whose stacks fail the collapse guard (checked once, cached)."""
+        if not dup_only(row):
+            return True
+        self._rows[row['chart_id']] = row
+        try:
+            self.chart(row['chart_id'])
+            return True
+        except ValueError:
+            return False
 
     def mel(self, sha):
         return np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode='r')
