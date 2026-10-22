@@ -1,0 +1,72 @@
+import dataclasses
+import unittest
+import numpy as np
+from beatfcn.events.requests import build_request, KINDS
+from beatfcn.model import features as F
+from events_helpers import synthetic_mania, synthetic_phira, DURATION
+
+
+def cores(chart, seeds=range(12)):
+    for kind in KINDS:
+        for seed in seeds:
+            try:
+                s = build_request(chart, kind=kind, seed=seed, audio_id='a', audio_duration_us=DURATION)
+            except (ValueError, AssertionError):
+                continue
+            if not s.ok:
+                continue
+            rng = np.random.default_rng(seed)
+            try:
+                c0 = F.choose_core(s, rng, DURATION)
+                yield s, c0, F.build_core(s, chart.events, c0, DURATION)
+            except F.SkipExample:
+                continue
+
+
+class FeatureTests(unittest.TestCase):
+    def test_targets_are_legal_and_ordered(self):
+        n = 0
+        for chart in (synthetic_mania(1), synthetic_phira(2)):
+            for s, c0, ex in cores(chart):
+                prev = -1
+                for g in ex.groups:
+                    self.assertTrue(0 <= g['t_rel_us'] < F.CORE_US)
+                    self.assertGreater(g['t_rel_us'], prev)
+                    prev = g['t_rel_us']
+                    self.assertTrue(ex.bin_ok[g['bin'], g['residual']], (s.recipe['kind'], g))
+                    if g['copy'] >= 0:
+                        self.assertEqual(ex.copy_times[g['copy']], g['t_rel_us'])
+                    for nt in g['notes']:
+                        if 'end_rel_us' in nt:
+                            lo, hi = nt['end_ok_us']
+                            self.assertTrue(lo <= nt['end_rel_us'] <= hi, nt)
+                    n += 1
+        self.assertGreater(n, 50)
+
+    def test_hidden_targets_never_in_prefix(self):
+        checked = 0
+        for chart in (synthetic_mania(3), synthetic_phira(4)):
+            for s, c0, ex in cores(chart):
+                if not ex.groups:
+                    continue
+                later = [h for h in s.hidden if h.onset_us >= c0]
+                # Deleting every hidden target at/after c0 must not change any prefix array. Controls are
+                # excluded on purpose: P0 derives them (as bands) from the full chart by design (spec §8).
+                kept = tuple(h for h in s.hidden if h.onset_us < c0)
+                ex2 = F.build_core(dataclasses.replace(s, hidden=kept), chart.events, c0, DURATION)
+                for name in ('known', 'refs', 'cell_state', 'bin_ok', 'copy_times', 'summary_stats'):
+                    np.testing.assert_array_equal(getattr(ex, name), getattr(ex2, name), err_msg=name)
+                gen = ex.known[ex.known[:, 7] == 1]
+                self.assertTrue((gen[:, 0] < 0).all(), 'generated context must precede the core')
+                self.assertTrue(later)
+                checked += 1
+        self.assertGreater(checked, 10)
+
+    def test_generated_context_flags(self):
+        for s, c0, ex in cores(synthetic_mania(5)):
+            obs = ex.known[ex.known[:, 7] == 0]
+            np.testing.assert_array_equal(obs[:, 8], (obs[:, 0] >= 0).astype(np.float32))
+
+
+if __name__ == '__main__':
+    unittest.main()
