@@ -189,8 +189,10 @@ class Corpus:
 
     @property
     def tap_dim(self):
+        """Tap width from one cached song's header (never a directory listing: 8.7k entries on a network
+        volume take tens of seconds, and every worker used to do it)."""
         if not hasattr(self, '_tap_dim'):
-            sha = next(iter(os.listdir(os.path.join(self.root, 'taps', self.taps_key))))
+            sha = next(iter(self._rows.values()))['audio_sha256'] if self._rows else next(iter(os.listdir(os.path.join(self.root, 'taps', self.taps_key))))
             self._tap_dim = np.load(os.path.join(self.root, 'taps', self.taps_key, sha, f'L{self.layers[0]}.npy'), mmap_mode='r').shape[-1]
         return self._tap_dim
 

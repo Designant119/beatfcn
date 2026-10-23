@@ -52,7 +52,9 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
                               salient=corpus.salient_us, pool=POOL, residence=RESIDENCE,
                               limits=STATIC_CORE if static else None)
             from beatfcn.model import features as F
+            t_w = time.time()
             Dt, quant = corpus.tap_dim, corpus.quant
+            first = True
             while True:
                 items = []
                 while len(items) < micro_batch:  # 4 cores per song bucket -> 2+ songs per microbatch
@@ -66,6 +68,9 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
                     key = 'collate:' + str(exc)[:40]
                     smp.skipped[key] = smp.skipped.get(key, 0) + 1
                     continue
+                if first:  # one line per worker in the container log: where start-up time went
+                    print(json.dumps({'worker': wid, 'first_batch_s': round(time.time() - t_w, 1), 'skipped': dict(smp.skipped)}), flush=True)
+                    first = False
                 yield bt, dict(smp.skipped)
     return Stream()
 
