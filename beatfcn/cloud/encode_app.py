@@ -237,49 +237,159 @@ def layer_probe(train_rows: list, val_rows: list, epochs: int = 2, batch: int = 
 
 
 @app.function(image=gpu_image, gpu=GPU, volumes={WEIGHTS: weights, DATA: data}, cpu=4.0, memory=32768, timeout=3600)
-def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16, pca: str = '', quant: bool = False):
-    """Write taps/{key}/{sha}/L{l}.npy (float16 [cells,8,D]) and S20.npy (2 s means of layer 20, full width).
+def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16, pca: str = '', quant: bool = False,
+                 group: int = 4):
+    """Write taps/{key}/{sha}/L{l}.npy and S20.npy (2 s means of layer 20, full width, float16).
 
-    pca: name of a frozen PCA in /data/pca (fit_pca); taps are projected on the GPU before saving.
+    pca: name of a frozen stats file in /data/pca. With comp_{l} it is a PCA (projected on the GPU);
+    without comp_{l} (fit_i8) taps stay full width and are only centred. quant: int8 with scale_{l}.
+    Pipelined for GPU occupancy: songs are encoded in groups (windows of `group` songs share fixed-size
+    batches), the next group's windows are built on a background thread, post-processing (centre /
+    project / quantise / summary) runs on the device, and results come back by async copies that
+    writer threads wait on before saving.
     """
     import numpy as np
     import torch
+    from concurrent.futures import ThreadPoolExecutor
     from beatfcn.audio import memory as M
-    t0, done, windows = time.time(), 0, 0
+    from beatfcn.cloud.gpu_util import GpuUtil
+    mon = GpuUtil()
+    t0, done, windows, t_gpu, t_wait = time.time(), 0, 0, 0.0, 0.0
     enc = None  # loaded on the first song that still needs encoding (re-runs over finished chunks stay cheap)
     pad = M.silence_row()
     want = sorted(set(layers) | {20})
-    proj = {}
+    mean, comp, qscale = {}, {}, {}
     if pca:
         z = np.load(f'{DATA}/pca/{pca}.npz')
-        proj = {l: (torch.from_numpy(z[f'mean_{l}']).cuda(), torch.from_numpy(z[f'comp_{l}']).cuda()) for l in layers}
-    qscale = {l: torch.from_numpy(z[f'scale_{l}']).cuda() for l in layers} if pca and quant else {}
-    for sha in shas:
+        mean = {l: torch.from_numpy(z[f'mean_{l}']).cuda() for l in layers}
+        comp = {l: torch.from_numpy(z[f'comp_{l}']).cuda() for l in layers if f'comp_{l}' in z}
+        if quant:
+            qscale = {l: torch.from_numpy(z[f'scale_{l}']).cuda() for l in layers}
+
+    def todo(sha):
         base = f'{DATA}/taps/{taps_key}/{sha}'
-        if all(os.path.exists(f'{base}/L{l}.npy') for l in layers) and os.path.exists(f'{base}/S20.npy'):
-            continue
-        mel = np.load(f'{DATA}/mel10/{sha}.npy').astype(np.float32)
-        if enc is None:
-            enc = load_encoder()
-        taps = M.encode_song(enc, mel, want, batch=batch, pad_row=pad)
+        return not (all(os.path.exists(f'{base}/L{l}.npy') for l in layers) and os.path.exists(f'{base}/S20.npy'))
+
+    def write(base, arrays):
         os.makedirs(base, exist_ok=True)
-        for l in layers:
-            t = taps[l]
-            if l in proj:
-                mu, comp = proj[l]
-                t = (t.cuda().float() - mu) @ comp
-                if qscale:
-                    t = (t / qscale[l]).round().clamp(-127, 127).to('cpu', torch.int8)
-                else:
-                    t = t.to('cpu', torch.float16)
-            np.save(f'{base}/L{l}.npy', t.numpy())
-        np.save(f'{base}/S20.npy', M.summary_means(taps[20]).numpy().astype(np.float16))
-        done += 1
-        windows += len(M.plan(mel.shape[0]).starts)
-        if done % 20 == 0:
-            data.commit()
+        for name, a in arrays:  # S20 last: its presence marks a finished song
+            np.save(f'{base}/{name}.npy', a)
+
+    work = [sha for sha in shas if todo(sha)]
+    groups = [work[i:i + group] for i in range(0, len(work), group)]
+
+    def prep(g):  # CPU, background: mels -> pinned window batch for a whole group of songs
+        mels = [np.load(f'{DATA}/mel10/{sha}.npy').astype(np.float32) for sha in g]
+        plans = [M.plan(m.shape[0]) for m in mels]
+        win = torch.cat([M.window_batch(m, pl.starts, pad) for m, pl in zip(mels, plans)])
+        return g, plans, win.pin_memory()
+
+    def write_after(ev, base, host):  # wait for the async device->host copies, then save
+        ev.synchronize()
+        write(base, [(name, t.numpy()) for name, t in host])
+
+    def summary_gpu(tap):  # == M.summary_means on the device, float16 result
+        n = -(-tap.shape[0] // M.SUMMARY_CELLS)
+        x = tap.new_zeros((n * M.SUMMARY_CELLS, *tap.shape[1:]), dtype=torch.float32)
+        x[:tap.shape[0]] = tap.float()
+        cnt = torch.full((n,), float(M.SUMMARY_CELLS), device=tap.device)
+        cnt[-1] = tap.shape[0] - (n - 1) * M.SUMMARY_CELLS
+        return (x.reshape(n, M.SUMMARY_CELLS, *tap.shape[1:]).sum(1) / cnt[:, None, None]).half()
+
+    reader, writer, pending = ThreadPoolExecutor(2), ThreadPoolExecutor(4), []
+    nxt = reader.submit(prep, groups[0]) if groups else None
+    with torch.inference_mode():
+        for gi in range(len(groups)):
+            tw = time.time()
+            g, plans, win = nxt.result()
+            t_wait += time.time() - tw
+            if gi + 1 < len(groups):
+                nxt = reader.submit(prep, groups[gi + 1])
+            if enc is None:
+                enc = load_encoder()
+                mon.take()  # utilisation is reported for the encoding phase only
+            tg = time.time()
+            outs = {l: [] for l in want}
+            for i in range(0, len(win), batch):
+                for l, t in enc(win[i:i + batch].to('cuda', non_blocking=True), want).items():
+                    outs[l].append(t.reshape(-1, M.BANDS, t.shape[-1]))
+            full = {l: torch.cat(v) for l, v in outs.items()}
+            off = 0
+            for sha, pl in zip(g, plans):
+                arrays = []
+                for l in layers:
+                    t = full[l][off:off + pl.cells].float()
+                    if l in mean:
+                        t = t - mean[l]
+                    if l in comp:
+                        t = t @ comp[l]
+                    t = (t / qscale[l]).round().clamp(-127, 127).to(torch.int8) if qscale else t.half()
+                    arrays.append((f'L{l}', t))
+                arrays.append(('S20', summary_gpu(full[20][off:off + pl.cells])))
+                off += len(pl.starts) * (M.HOP // M.FRAMES_PER_CELL)
+                host = []
+                for name, t in arrays:
+                    h = torch.empty(t.shape, dtype=t.dtype, pin_memory=True)
+                    h.copy_(t, non_blocking=True)
+                    host.append((name, h))
+                ev = torch.cuda.Event()
+                ev.record()
+                pending.append(writer.submit(write_after, ev, f'{DATA}/taps/{taps_key}/{sha}', host))
+                done += 1
+                windows += len(pl.starts)
+            t_gpu += time.time() - tg  # host-side enqueue time; the device runs ahead asynchronously
+            while len(pending) > 3 * group:  # bound pinned host memory; also surfaces write errors
+                tw = time.time()
+                pending.pop(0).result()
+                t_wait += time.time() - tw
+            if gi % 10 == 9:
+                data.commit()
+    util = mon.take()  # steady encoding phase (excludes model load and the final write flush)
+    t_flush = time.time()
+    for f in pending:
+        f.result()
     data.commit()
-    return {'songs': done, 'windows': windows, 'seconds': round(time.time() - t0, 1), 'gpu': torch.cuda.get_device_name()}
+    util['flush_s'] = round(time.time() - t_flush, 1)
+    mon.close()
+    return {'songs': done, 'windows': windows, 'seconds': round(time.time() - t0, 1), 'gpu_s': round(t_gpu, 1),
+            'io_wait_s': round(t_wait, 1), 'gpu': torch.cuda.get_device_name() if torch.cuda.is_available() else '', **util}
+
+
+@app.function(image=gpu_image, volumes={DATA: data}, cpu=4.0, memory=32768, timeout=3600)
+def fit_i8(src_key: str = 'v2_L9-16-24', layers: list = (9, 16, 24), songs: int = 40, seed: int = 20261023):
+    """Per-dimension int8 stats for full-width taps: mean_{l}, scale_{l} = 6 sigma / 127 (no comp_{l}).
+
+    Fit on TRAIN songs of the full-width float16 cache; saved to pca/i8_{layers}.npz.
+    """
+    import numpy as np
+    from concurrent.futures import ThreadPoolExecutor
+    import json as _json
+    rows = [_json.loads(l) for l in open(f'{DATA}/manifest/charts.jsonl')]
+    train = {r['audio_sha256'] for r in rows if r.get('split') == 'train'}
+    have = sorted(s for s in os.listdir(f'{DATA}/taps/{src_key}') if s in train)
+    rng = np.random.default_rng(seed)
+    pick = [have[i] for i in rng.choice(len(have), size=min(songs, len(have)), replace=False)]
+    out, report = {}, {'src_key': src_key, 'songs': len(pick), 'layers': list(layers), 'sigmas': 6}
+    with ThreadPoolExecutor(8) as ex:
+        for l in layers:
+            s1 = s2 = n = 0
+            for a in ex.map(lambda sha: np.load(f'{DATA}/taps/{src_key}/{sha}/L{l}.npy'), pick):
+                x = a.astype(np.float64).reshape(-1, a.shape[-1])
+                s1, s2, n = s1 + x.sum(0), s2 + (x * x).sum(0), n + len(x)
+            mu = s1 / n
+            sd = np.sqrt(np.maximum(s2 / n - mu * mu, 1e-12))
+            out[f'mean_{l}'], out[f'scale_{l}'] = mu.astype(np.float32), (6 * sd / 127).astype(np.float32)
+            report[f'L{l}'] = {'cells': int(n), 'sd_median': float(np.median(sd)), 'sd_max': float(sd.max())}
+    name = 'i8_' + '-'.join(str(l) for l in layers)
+    os.makedirs(f'{DATA}/pca', exist_ok=True)
+    np.savez(f'{DATA}/pca/{name}.npz', **out)
+    data.commit()
+    return {'name': name, **report}
+
+
+@app.local_entrypoint()
+def i8(src_key: str = 'v2_L9-16-24', layers: str = '9,16,24', songs: int = 40):
+    print(json.dumps(fit_i8.remote(src_key, [int(x) for x in layers.split(',')], songs), indent=1))
 
 
 @app.local_entrypoint()
@@ -295,15 +405,22 @@ def run_probe(rows_json: str, out: str = 'reports/layer_probe.json', epochs: int
 
 @app.local_entrypoint()
 def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24', per_container: int = 200, pca: str = '',
-           quant: bool = False):
-    """Encode songs listed (one sha per line) in parallel H100 containers; idempotent."""
+           quant: bool = False, gpu: str = '', batch: int = 16, limit: int = 0, group: int = 4, offset: int = 0):
+    """Encode songs listed (one sha per line) in parallel containers; idempotent. gpu overrides the
+    container GPU (encoding is volume-bound, so cheaper GPUs can win per song); limit: first N songs only."""
     shas = [s.strip() for s in Path(shas_file).read_text().split() if s.strip()]
+    shas = shas[offset:offset + limit] if limit else shas[offset:]
     ls = [int(x) for x in layers.split(',')]
     chunks = [shas[i:i + per_container] for i in range(0, len(shas), per_container)]
+    fn = encode_songs.with_options(gpu=gpu) if gpu else encode_songs
     t = time.time()
-    res = list(encode_songs.starmap([(c, ls, taps_key, 16, pca, quant) for c in chunks]))
+    res = list(fn.starmap([(c, ls, taps_key, batch, pca, quant, group) for c in chunks]))
     print(json.dumps({'chunks': len(chunks), 'songs': sum(r['songs'] for r in res), 'windows': sum(r['windows'] for r in res),
-                      'gpu_seconds': round(sum(r['seconds'] for r in res), 1), 'wall_s': round(time.time() - t, 1)}))
+                      'container_s': round(sum(r['seconds'] for r in res), 1), 'gpu_s': round(sum(r['gpu_s'] for r in res), 1),
+                      'io_wait_s': round(sum(r['io_wait_s'] for r in res), 1), 'gpu': res[0]['gpu'] if res else '',
+                      'util_mean_per_container': [r.get('util_mean') for r in res],
+                      'flush_s_per_container': [r.get('flush_s') for r in res],
+                      'wall_s': round(time.time() - t, 1)}))
 
 
 @app.function(image=gpu_image, gpu=GPU, volumes={DATA: data}, cpu=8.0, memory=65536, timeout=3600)
@@ -358,3 +475,69 @@ def pca(dims: int = 512):
     r = fit_pca.remote(dims=dims)
     Path('reports/pca_fit.json').write_text(json.dumps(r, indent=1))
     print(json.dumps(r, indent=1))
+
+
+@app.function(image=gpu_image, gpu='L40S', volumes={WEIGHTS: weights}, cpu=4.0, memory=32768, timeout=1800)
+def bench_encode2(batches=(16, 32), repeats: int = 20, modes=('eager', 'default', 'max-autotune-no-cudagraphs')):
+    """Steady-state teacher throughput for the cache layers {9,16,20,24}: eager vs torch.compile modes.
+    Reports windows/s, GPU utilisation and the max |compiled - eager| on the deepest tap."""
+    import torch
+    from beatfcn.audio import memory as M
+    from beatfcn.audio.pupu import make_rope
+    from beatfcn.cloud.gpu_util import GpuUtil
+    enc = load_encoder()
+    teacher = enc.teacher
+    want = (9, 16, 20, 24)
+    grid = (M.WINDOW // M.FRAMES_PER_CELL, M.BANDS)
+    rope = make_rope(grid, teacher.head_dim, device='cuda')
+    keep = slice(M.EDGE // M.FRAMES_PER_CELL, (M.EDGE + M.HOP) // M.FRAMES_PER_CELL)
+
+    def fwd(w):
+        x = teacher.patch_embed(w)
+        out = []
+        for l, block in enumerate(teacher.teacher.blocks, 1):
+            x = block(x, rope)
+            if l in want:
+                out.append(x.reshape(x.shape[0], *grid, -1)[:, keep])
+            if l >= max(want):
+                break
+        return out
+
+    mon, rows, ref = GpuUtil(), [], {}
+    for mode in modes:
+        f = fwd if mode == 'eager' else torch.compile(fwd, mode=mode)
+        for b in batches:
+            g = torch.Generator().manual_seed(b)
+            x = torch.randn(b, 1, 1024, 128, generator=g).to('cuda', torch.bfloat16)
+            with torch.inference_mode():
+                t = time.time()
+                y = f(x)
+                torch.cuda.synchronize()
+                first = time.time() - t
+                for _ in range(3):
+                    f(x)
+                torch.cuda.synchronize()
+                mon.take()
+                t = time.time()
+                for _ in range(repeats):
+                    y = f(x)
+                torch.cuda.synchronize()
+                dt = (time.time() - t) / repeats
+                util = mon.take()
+            deep = y[-1].float()
+            if mode == 'eager':
+                ref[b] = deep
+            err = float((deep - ref[b]).abs().max()) if b in ref else None
+            rel = float(((deep - ref[b]).norm() / ref[b].norm())) if b in ref else None
+            rows.append({'mode': mode, 'batch': b, 'windows_per_s': round(b / dt, 1), 'first_call_s': round(first, 1),
+                         'util': util['util_mean'], 'max_abs_diff_L24': err, 'rel_diff_L24': rel})
+            print(json.dumps(rows[-1]), flush=True)
+    mon.close()
+    return {'gpu': torch.cuda.get_device_name(), 'torch': torch.__version__, 'rows': rows}
+
+
+@app.local_entrypoint()
+def bench2(gpus: str = 'L40S,H100'):
+    calls = {g: bench_encode2.with_options(gpu=g).spawn() for g in gpus.split(',')}
+    for g, c in calls.items():
+        print(json.dumps(c.get(), indent=1))

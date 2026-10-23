@@ -706,3 +706,91 @@ def profile(n_batches: int = 12, pool: int = POOL):
     r = profile_data.remote(n_batches=n_batches, pool=pool)
     print(json.dumps({k: v for k, v in r.items() if k != 'profile'}))
     print(r['profile'])
+
+
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=12.0, memory=49152, timeout=3600)
+def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24',
+                    tap_dim: int = 1024, n_cores: int = 384, steps: int = 24, variant: dict | None = None,
+                    configs: tuple = ('m8x4_sync', 'm8x4', 'm32', 'm32_fused', 'm32_fused_compile')):
+    """GPU-side cost of one optimiser step (32 cores) with data already prepared on the host (pinned).
+
+    Isolates what the device needs per step, so CPU workers can be sized to it, not guessed."""
+    import torch
+    from beatfcn.cloud.gpu_util import GpuUtil
+    from beatfcn.model.batch import collate
+    from beatfcn.model.p1 import P1Config, P1Model
+    from beatfcn.train.data import Corpus, load_manifest
+    from beatfcn.train.loop import to_device
+    tdir = f'{DATA}/taps/{taps_key}'
+    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
+    corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': tuple(taps), 'pca': pca}
+    t0 = time.time()
+    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 1, 8, tuple(taps), max(taps)), batch_size=None,
+                                         num_workers=10, prefetch_factor=2)
+    it = iter(loader)
+    m8 = [next(it)[0] for _ in range(n_cores // 8)]
+    build_s = time.time() - t0
+    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 2, 32, tuple(taps), max(taps)), batch_size=None,
+                                         num_workers=10, prefetch_factor=2)
+    it = iter(loader)
+    m32 = [next(it)[0] for _ in range(n_cores // 32)]
+    pin = lambda bt: {k: (v.pin_memory() if torch.is_tensor(v) else v) for k, v in bt.items()}
+    m8, m32 = [pin(b) for b in m8], [pin(b) for b in m32]
+    dev = torch.device('cuda')
+    mon, out = GpuUtil(), {'gpu': torch.cuda.get_device_name(), 'songs': len({r['audio_sha256'] for r in rows}),
+                           'build_s': round(build_s, 1), 'rows': []}
+    for cfg in configs:
+        torch.manual_seed(0)
+        mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **(variant or {}))
+        model = P1Model(mc).to(dev)
+        opt = torch.optim.AdamW(model.parameters(), lr=1e-4, fused='fused' in cfg)
+        fwd = torch.compile(model) if 'compile' in cfg else model
+        micro, acc = (m8, 4) if cfg.startswith('m8') else (m32, 1)
+        sync = 'sync' in cfg
+        k = 0
+
+        def step():
+            nonlocal k
+            for _ in range(acc):
+                bt = to_device(micro[k % len(micro)], dev)
+                k += 1
+                bt['w_select'] = 0.2
+                with torch.autocast('cuda', dtype=torch.bfloat16):
+                    loss, _ = fwd(bt)
+                (loss / acc).backward()
+                if sync:
+                    torch.cuda.synchronize()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
+            opt.zero_grad(set_to_none=True)
+        try:
+            tw = time.time()
+            for _ in range(6 if 'compile' in cfg else 3):  # warm-up (compile cycles through the batch shapes)
+                step()
+            torch.cuda.synchronize()
+            warm = time.time() - tw
+            mon.take()
+            torch.cuda.reset_peak_memory_stats()
+            t = time.time()
+            for _ in range(steps):
+                step()
+            torch.cuda.synchronize()
+            dt = (time.time() - t) / steps
+            row = {'config': cfg, 's_per_step': round(dt, 3), 'util': mon.take()['util_mean'], 'warmup_s': round(warm, 1),
+                   'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2)}
+        except Exception as exc:  # report and continue with the other configs
+            row = {'config': cfg, 'error': repr(exc)[:300]}
+        out['rows'].append(row)
+        print(json.dumps(row), flush=True)
+        del model, opt, fwd
+        torch.cuda.empty_cache()
+    mon.close()
+    return out
+
+
+@app.local_entrypoint()
+def bench_gpu(gpus: str = 'L40S,H100'):
+    calls = {g: bench_train_gpu.with_options(gpu=g).spawn() for g in gpus.split(',')}
+    for g, c in calls.items():
+        print(json.dumps(c.get(), indent=1))
