@@ -1,5 +1,5 @@
 {
-  "scope": "Sanitized source, third-party notices, public provenance, docs and CPU evidence; no private inputs, account evidence or credentials.",
+  "scope": "Public source, documentation and sanitized technical test evidence only; no private data or credentials.",
   "files": {
     ".gitignore": {
       "sha256": "cfcf11d7f870fee75d85bb10f4d63dae5c287fe9b8e3eb365f22a7d0c4f50522",
@@ -10,8 +10,8 @@
       "bytes": 10546
     },
     "HANDOFF.md": {
-      "sha256": "4f0db21b7d51ca7e74a1e15c84ab62be70861d3d2fe2139d50fff118817f3aff",
-      "bytes": 14480
+      "sha256": "1ffa482fc8ce803c85aead88e7860b7c4002ea9b9a48b1f104925e3f3263884c",
+      "bytes": 15864
     },
     "LICENSES/PupuM2D.txt": {
       "sha256": "70572f35d4aefaf0132cbb0e3a697cfa54498a955a0b1583657e61b034ba3c0d",
