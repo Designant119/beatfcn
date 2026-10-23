@@ -59,8 +59,9 @@ class PipelineTests(unittest.TestCase):
         runner = P.TapRunner(fake_fwd(want), want, layers, quant, batch=3, window_shape=(1, M.WINDOW, 128),
                              device='cpu', mode='eager')
         saved = {}
-        stats = P.run(list(mels), lambda s: mels[s], lambda s, arrs: saved.__setitem__(s, {k: v.copy() for k, v in arrs}),
-                      runner, layers, group=2, writers=2, readers=2, device='cpu', out_slots=2, in_slots=2, max_cells=500)
+        with torch.inference_mode():  # as in encode_app: ring slots become inference tensors, readers run in other threads
+            stats = P.run(list(mels), lambda s: mels[s], lambda s, arrs: saved.__setitem__(s, {k: v.copy() for k, v in arrs}),
+                          runner, layers, group=2, writers=2, readers=2, device='cpu', out_slots=2, in_slots=2, max_cells=500)
         self.assertGreater(stats['fallback_buffers'], 0)
         fwd = fake_fwd(want)
         for sha, mel in mels.items():

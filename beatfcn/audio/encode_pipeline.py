@@ -140,6 +140,10 @@ def run(work, load_mel, save, runner, layers, *, group=4, writers=8, readers=2, 
         in_free.put((torch.empty((max_win, 1, M.WINDOW, pad_host.shape[0]), dtype=dt_in, pin_memory=cuda), _NoEvent()))
 
     def prep(g):  # reader thread: windows written straight into a ring slot (== window_batch(...).to(dt_in))
+        with torch.inference_mode():  # thread-local: slots may be inference tensors when run() is called in that mode
+            return _prep(g)
+
+    def _prep(g):
         mels = [torch.from_numpy(np.asarray(load_mel(sha))) for sha in g]
         plans = [M.plan(m.shape[0]) for m in mels]
         total = sum(len(pl.starts) for pl in plans)
