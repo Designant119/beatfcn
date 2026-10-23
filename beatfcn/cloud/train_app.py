@@ -133,13 +133,16 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
-          device: str = 'cuda'):
+          device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
     also: [{'run_id': ..., 'variant': {...}}, ...] further models trained in this container on the SAME
     micro-batches (paired comparison; the data path, CPUs and container overheads are paid once). Each run
-    keeps its own optimiser, checkpoints and log under /data/runs/{run_id}."""
+    keeps its own optimiser, checkpoints and log under /data/runs/{run_id}.
+
+    min_util: cost guard. From check_after_s seconds into training, a log interval whose GPU utilisation is
+    below min_util checkpoints every run (resumable) and stops."""
     import numpy as np
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
@@ -228,8 +231,15 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, tuple(taps)),
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
     mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
-    examples, wait_s, gpu_s = 0, 0.0, 0.0
+    examples, wait_s, gpu_s, t_loop, aborted = 0, 0.0, 0.0, time.time(), None
     end = min(stop_at, tc.steps) if stop_at else tc.steps
+
+    def checkpoint(step):
+        for r in runs:
+            torch.save({'model': r.model.state_dict(), 'opt': r.opt.state_dict(), 'config': asdict(r.mc), 'data': corpus_args,
+                        'step': step, 'best': r.best}, f'{r.dir}/last.pt.tmp')
+            os.replace(f'{r.dir}/last.pt.tmp', f'{r.dir}/last.pt')
+        data.commit()
     for step in range(start_step, end):
         for r in runs:
             for g in r.opt.param_groups:
@@ -270,6 +280,12 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             for r in runs:
                 r.log({'event': 'train', **shared, 'grad_norm': float(r.gn), 'fields': summarize(r.acc)})
                 r.acc = {}
+            u = shared['gpu_util']
+            if min_util and u is not None and time.time() - t_loop >= check_after_s and u < min_util:
+                aborted = f'GPU util {u}% < {min_util}% at step {step + 1}'
+                log_all({'event': 'aborted', 'reason': aborted, 'step': step + 1})
+                checkpoint(step + 1)
+                break
         if (step + 1) % tc.validate_every == 0 or step + 1 in (tc.steps, end):
             for r in runs:
                 v = evaluate(r.model, val, corpus.song, r.mc, dev, micro_batch)
@@ -278,12 +294,10 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                     r.best = v['total']
                     torch.save({'model': r.model.state_dict(), 'config': asdict(r.mc), 'data': corpus_args, 'step': step + 1,
                                 'val': v}, f'{r.dir}/best.pt')
-                torch.save({'model': r.model.state_dict(), 'opt': r.opt.state_dict(), 'config': asdict(r.mc), 'data': corpus_args,
-                            'step': step + 1, 'best': r.best}, f'{r.dir}/last.pt.tmp')
-                os.replace(f'{r.dir}/last.pt.tmp', f'{r.dir}/last.pt')
-            data.commit()
+            checkpoint(step + 1)
     data.commit()
-    return {'runs': {r.id: r.best for r in runs}, 'elapsed_s': round(time.time() - t0, 1), 'examples': examples}
+    return {'runs': {r.id: r.best for r in runs}, 'elapsed_s': round(time.time() - t0, 1), 'examples': examples,
+            'aborted': aborted}
 
 
 @app.local_entrypoint()
@@ -774,7 +788,7 @@ def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 2
 
 @app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=4.0, memory=32768, timeout=1800)
 def bench_train_gpu(batches: str = 'bench/batches_v4.pt', tap_dim: int = 1024, steps: int = 24, variant: dict | None = None,
-                    configs: tuple = ('pad_m8x4', 'packed_m8x4', 'packed_m32')):
+                    configs: tuple = ('packed_m8x4', 'packed_m32', 'pad_m32')):
     """GPU-side cost of one optimiser step (32 cores) on micro-batches prepared by prep_bench_batches
     (loaded, pinned): the GPU container never builds data."""
     import torch
@@ -839,12 +853,12 @@ def bench_train_gpu(batches: str = 'bench/batches_v4.pt', tap_dim: int = 1024, s
 
 
 @app.local_entrypoint()
-def prep_bench(n_cores: int = 192, workers: int = 14):
+def prep_bench(n_cores: int = 128, workers: int = 14):
     print(prep_bench_batches.remote(n_cores=n_cores, workers=workers))
 
 
 @app.local_entrypoint()
-def bench_gpu(gpus: str = 'L40S,H100', timeout: int = 600):
+def bench_gpu(gpus: str = 'L40S,H100,L4,A10', timeout: int = 600):
     calls = {g: bench_train_gpu.with_options(gpu=g, timeout=timeout).spawn() for g in gpus.split(',')}
     for g, c in calls.items():
         print(json.dumps(c.get(), indent=1))
