@@ -18,7 +18,7 @@ _HERE = Path(__file__).resolve()
 REPO = _HERE.parents[2] if len(_HERE.parents) > 2 else _HERE.parent
 DATA = '/data'
 app = modal.App('beatfcn-train')
-POOL, RESIDENCE = 4, 4  # per worker and mode: resident songs, draws (of up to 4 cores) each before eviction
+POOL, RESIDENCE = 6, 8  # per worker and mode: resident songs, draws (of up to 4 cores) each before eviction
 data = modal.Volume.from_name('beatfcn-data', create_if_missing=True)
 image = (modal.Image.debian_slim(python_version='3.12')
          .pip_install('torch==2.7.1', index_url='https://download.pytorch.org/whl/cu126')
@@ -671,7 +671,7 @@ def controls(run_id: str, n_cores: int = 80):
 
 @app.function(image=image, volumes={DATA: data}, cpu=2.0, memory=8192, timeout=1800)
 def profile_data(taps_key: str = 'v3_pca512q_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'pca512_9-16-24',
-                 n_batches: int = 12, micro_batch: int = 8):
+                 n_batches: int = 12, micro_batch: int = 8, pool: int = POOL):
     """Single-process cProfile of the training data path (draw -> collate), to find the CPU hot spots."""
     import cProfile
     import io
@@ -681,7 +681,9 @@ def profile_data(taps_key: str = 'v3_pca512q_L9-16-24', taps: tuple = (9, 16, 24
     from beatfcn.train.loop import CoreSampler
     corpus = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca)
     rows = [r for r in load_manifest(DATA) if r['split'] == 'train']
-    smp = CoreSampler(corpus.train_rows(rows), corpus.chart, corpus.song, 1, salient=corpus.salient_us)
+    load = (lambda sha: corpus.song(sha, in_memory=True)) if pool else corpus.song
+    smp = CoreSampler(corpus.train_rows(rows), corpus.chart, load, 1, salient=corpus.salient_us, pool=pool,
+                      residence=RESIDENCE)
     for _ in range(2):  # warm caches the same way a long-running worker would
         items = smp.draw(4)
     pr = cProfile.Profile()
@@ -700,7 +702,7 @@ def profile_data(taps_key: str = 'v3_pca512q_L9-16-24', taps: tuple = (9, 16, 24
 
 
 @app.local_entrypoint()
-def profile(n_batches: int = 12):
-    r = profile_data.remote(n_batches=n_batches)
+def profile(n_batches: int = 12, pool: int = POOL):
+    r = profile_data.remote(n_batches=n_batches, pool=pool)
     print(json.dumps({k: v for k, v in r.items() if k != 'profile'}))
     print(r['profile'])

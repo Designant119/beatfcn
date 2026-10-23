@@ -181,10 +181,17 @@ class Corpus:
         sequential read each (int8 taps stay int8 in memory and are dequantised per slice)."""
         base = os.path.join(self.root, 'taps', self.taps_key, sha)
         mm = None if in_memory else 'r'
-        taps = {l: np.load(os.path.join(base, f'L{l}.npy'), mmap_mode=mm) for l in self.layers}
+        paths = [os.path.join(base, f'L{l}.npy') for l in self.layers] + [os.path.join(base, 'S20.npy'),
+                                                                          os.path.join(self.root, 'mel10', f'{sha}.npy')]
+        if in_memory:  # one stream per file: a single network-volume read stream is ~25 MB/s
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(len(paths)) as ex:
+                arrs = list(ex.map(np.load, paths))
+        else:
+            arrs = [np.load(q, mmap_mode=mm) for q in paths]
+        taps = dict(zip(self.layers, arrs))
         for l, sc in self.scale.items():
             if taps[l].dtype == np.int8:
                 taps[l] = QuantArray(taps[l], sc)
-        summary = np.load(os.path.join(base, 'S20.npy'), mmap_mode=mm)
-        mel = np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode=mm)
+        summary, mel = arrs[-2], arrs[-1]
         return SongCache(taps, summary, mel, int(mel.shape[0] * 10_000))
