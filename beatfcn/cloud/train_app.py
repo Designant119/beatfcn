@@ -18,7 +18,7 @@ _HERE = Path(__file__).resolve()
 REPO = _HERE.parents[2] if len(_HERE.parents) > 2 else _HERE.parent
 DATA = '/data'
 app = modal.App('beatfcn-train')
-POOL, RESIDENCE = 6, 8  # per worker and mode: resident songs, draws (of up to 4 cores) each before eviction
+POOL, RESIDENCE = 6, 16  # per worker and mode: resident songs, draws (of up to 4 cores) each before eviction
 data = modal.Volume.from_name('beatfcn-data', create_if_missing=True)
 image = (modal.Image.debian_slim(python_version='3.12')
          .pip_install('torch==2.7.1', index_url='https://download.pytorch.org/whl/cu126')
@@ -710,38 +710,57 @@ def profile(n_batches: int = 12, pool: int = POOL):
     print(r['profile'])
 
 
-@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=12.0, memory=49152, timeout=3600)
-def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24',
-                    tap_dim: int = 1024, n_cores: int = 384, steps: int = 24, variant: dict | None = None,
-                    configs: tuple = ('pad_m8x4', 'packed_m8x4', 'packed_m32')):
-    """GPU-side cost of one optimiser step (32 cores) with data already prepared on the host (pinned).
-
-    Isolates what the device needs per step, so CPU workers can be sized to it, not guessed."""
+@app.function(image=image, volumes={DATA: data}, cpu=16.0, memory=65536, timeout=1800)
+def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24',
+                       n_cores: int = 192, workers: int = 14, out: str = 'bench/batches_v4.pt'):
+    """CPU-only: build the benchmark micro-batches once (8-core and 32-core collations of real training
+    cores) and save them, so GPU benchmarks never hold a GPU while data is prepared. Also reports the
+    data path's sustained rate (cores/s with `workers` processes), which sizes training CPUs."""
     import torch
-    from beatfcn.cloud.gpu_util import GpuUtil
-    from beatfcn.model.batch import collate
-    from beatfcn.model.p1 import P1Config, P1Model
-    from beatfcn.train.data import Corpus, load_manifest
-    from beatfcn.train.loop import to_device
     tdir = f'{DATA}/taps/{taps_key}'
     have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    from beatfcn.train.data import load_manifest
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': tuple(taps), 'pca': pca}
+    res = {}
+    for name, mb in (('m8', 8), ('m32', 32)):
+        loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, mb, mb, tuple(taps), max(taps)), batch_size=None,
+                                             num_workers=workers, prefetch_factor=2)
+        it = iter(loader)
+        t0 = time.time()
+        first = next(it)[0]
+        t1 = time.time()
+        rest = [next(it)[0] for _ in range(n_cores // mb - 1)]
+        t2 = time.time()
+        res[name] = [first] + rest
+        res[f'{name}_first_s'] = round(t1 - t0, 1)
+        res[f'{name}_cores_per_s'] = round((n_cores - mb) / max(t2 - t1, 1e-6), 1)
+        del loader, it
+    os.makedirs(os.path.dirname(f'{DATA}/{out}'), exist_ok=True)
+    torch.save({'m8': res['m8'], 'm32': res['m32'], 'taps': list(taps), 'taps_key': taps_key}, f'{DATA}/{out}')
+    data.commit()
+    stats = {k: v for k, v in res.items() if not isinstance(v, list)}
+    print(json.dumps(stats))
+    return stats
+
+
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=4.0, memory=32768, timeout=1800)
+def bench_train_gpu(batches: str = 'bench/batches_v4.pt', tap_dim: int = 1024, steps: int = 24, variant: dict | None = None,
+                    configs: tuple = ('pad_m8x4', 'packed_m8x4', 'packed_m32')):
+    """GPU-side cost of one optimiser step (32 cores) on micro-batches prepared by prep_bench_batches
+    (loaded, pinned): the GPU container never builds data."""
+    import torch
+    from beatfcn.cloud.gpu_util import GpuUtil
+    from beatfcn.model.p1 import P1Config, P1Model
+    from beatfcn.train.loop import to_device
     t0 = time.time()
-    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 1, 8, tuple(taps), max(taps)), batch_size=None,
-                                         num_workers=10, prefetch_factor=2)
-    it = iter(loader)
-    m8 = [next(it)[0] for _ in range(n_cores // 8)]
-    build_s = time.time() - t0
-    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 2, 32, tuple(taps), max(taps)), batch_size=None,
-                                         num_workers=10, prefetch_factor=2)
-    it = iter(loader)
-    m32 = [next(it)[0] for _ in range(n_cores // 32)]
+    z = torch.load(f'{DATA}/{batches}', weights_only=False)
+    taps = tuple(z['taps'])
     pin = lambda bt: {k: (v.pin_memory() if torch.is_tensor(v) else v) for k, v in bt.items()}
-    m8, m32 = [pin(b) for b in m8], [pin(b) for b in m32]
+    m8, m32 = [pin(b) for b in z['m8']], [pin(b) for b in z['m32']]
+    build_s = time.time() - t0
     dev = torch.device('cuda')
-    mon, out = GpuUtil(), {'gpu': torch.cuda.get_device_name(), 'songs': len({r['audio_sha256'] for r in rows}),
-                           'build_s': round(build_s, 1), 'rows': []}
+    mon, out = GpuUtil(), {'gpu': torch.cuda.get_device_name(), 'load_s': round(build_s, 1), 'rows': []}
     for cfg in configs:
         torch.manual_seed(0)
         mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **{**(variant or {}), 'packed': 'packed' in cfg})
@@ -792,7 +811,12 @@ def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24),
 
 
 @app.local_entrypoint()
-def bench_gpu(gpus: str = 'L40S,H100', timeout: int = 900):
+def prep_bench(n_cores: int = 192, workers: int = 14):
+    print(prep_bench_batches.remote(n_cores=n_cores, workers=workers))
+
+
+@app.local_entrypoint()
+def bench_gpu(gpus: str = 'L40S,H100', timeout: int = 600):
     calls = {g: bench_train_gpu.with_options(gpu=g, timeout=timeout).spawn() for g in gpus.split(',')}
     for g, c in calls.items():
         print(json.dumps(c.get(), indent=1))
