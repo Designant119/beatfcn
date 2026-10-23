@@ -1,0 +1,2036 @@
+{
+  "schema": "beatfcn.offset_migration.v2",
+  "before_sha256": "1809b2eabc35acc89610209372e31131b6bfbe2941ded6bc90872fd48cce8876",
+  "after_sha256": "3d99ff6bd5e7c7f139b4c2ed896bf352990297523d217feb281c2e07aa1d076c",
+  "rows": 24048,
+  "changed": 64,
+  "transitions": {
+    "osu:quarantine->shift": 18,
+    "phira:quarantine->shift": 45,
+    "phira:shift->quarantine": 1
+  },
+  "selection_changes": {
+    "train:osu:False->True": 4,
+    "test:osu:False->False": 3,
+    "train:osu:False->False": 10,
+    "val:osu:False->False": 1,
+    "train:phira:False->True": 37,
+    "val:phira:False->True": 3,
+    "train:phira:False->False": 2,
+    "test:phira:False->True": 2,
+    "train:phira:True->False": 1,
+    "val:phira:False->False": 1
+  },
+  "changes": [
+    {
+      "chart_id": "osu:4317933",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.9706,
+        "agree_after": 0.9412,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.0735,
+        "agree_candidate": 0.9853,
+        "agree_after": 0.9853,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "osu:4317957",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.9406,
+        "agree_after": 0.9208,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.0693,
+        "agree_candidate": 0.9703,
+        "agree_after": 0.9703,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "osu:4317934",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.8722,
+        "agree_after": 0.8346,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.0752,
+        "agree_candidate": 0.8947,
+        "agree_after": 0.8947,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "osu:2466822",
+      "source": "osu",
+      "split": "test",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -31,
+        "agree_before": 0.6811,
+        "agree_after": 0.7206,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -31,
+        "agree_before": 0.0171,
+        "agree_candidate": 0.7869,
+        "agree_after": 0.7869,
+        "action": "shift",
+        "shift_ms": -31,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:2830264",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -28,
+        "agree_before": 0.5341,
+        "agree_after": 0.5083,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -28,
+        "agree_before": 0.1578,
+        "agree_candidate": 0.544,
+        "agree_after": 0.544,
+        "action": "shift",
+        "shift_ms": -28,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:2511383",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -33,
+        "agree_before": 0.4992,
+        "agree_after": 0.3815,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -33,
+        "agree_before": 0.1484,
+        "agree_candidate": 0.5283,
+        "agree_after": 0.5283,
+        "action": "shift",
+        "shift_ms": -33,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:872965",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.8926,
+        "agree_after": 0.8309,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.1189,
+        "agree_candidate": 0.9054,
+        "agree_after": 0.9054,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:872945",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.8827,
+        "agree_after": 0.8265,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.1161,
+        "agree_candidate": 0.8967,
+        "agree_after": 0.8967,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:872946",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.8015,
+        "agree_after": 0.742,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.1181,
+        "agree_candidate": 0.8129,
+        "agree_after": 0.8129,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:2681840",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.6059,
+        "agree_after": 0.5732,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -27,
+        "agree_before": 0.1991,
+        "agree_candidate": 0.6883,
+        "agree_after": 0.6883,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "osu:3032791",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -29,
+        "agree_before": 0.7826,
+        "agree_after": 0.8144,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -29,
+        "agree_before": 0.028,
+        "agree_candidate": 0.8492,
+        "agree_after": 0.8492,
+        "action": "shift",
+        "shift_ms": -29,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:3331566",
+      "source": "osu",
+      "split": "val",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -29,
+        "agree_before": 0.5458,
+        "agree_after": 0.5451,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -29,
+        "agree_before": 0.0814,
+        "agree_candidate": 0.5973,
+        "agree_after": 0.5973,
+        "action": "shift",
+        "shift_ms": -29,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:3172743",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.4903,
+        "agree_after": 0.4569,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.1129,
+        "agree_candidate": 0.5059,
+        "agree_after": 0.5059,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:3172744",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.4903,
+        "agree_after": 0.4569,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -26,
+        "agree_before": 0.1129,
+        "agree_candidate": 0.5059,
+        "agree_after": 0.5059,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:2843754",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -29,
+        "agree_before": 0.5372,
+        "agree_after": 0.4886,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -29,
+        "agree_before": 0.1654,
+        "agree_candidate": 0.544,
+        "agree_after": 0.544,
+        "action": "shift",
+        "shift_ms": -29,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:2171823",
+      "source": "osu",
+      "split": "test",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -32,
+        "agree_before": 0.6434,
+        "agree_after": 0.7131,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -32,
+        "agree_before": 0.0166,
+        "agree_candidate": 0.7989,
+        "agree_after": 0.7989,
+        "action": "shift",
+        "shift_ms": -32,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:1777425",
+      "source": "osu",
+      "split": "train",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -36,
+        "agree_before": 0.2945,
+        "agree_after": 0.4267,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -36,
+        "agree_before": 0.1615,
+        "agree_candidate": 0.5002,
+        "agree_after": 0.5002,
+        "action": "shift",
+        "shift_ms": -36,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "osu:2466829",
+      "source": "osu",
+      "split": "test",
+      "old": {
+        "c_ms": 14,
+        "r_ms": -34,
+        "agree_before": 0.7526,
+        "agree_after": 0.7377,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 14,
+        "r_ms": -34,
+        "agree_before": 0.0143,
+        "agree_candidate": 0.8223,
+        "agree_after": 0.8223,
+        "action": "shift",
+        "shift_ms": -34,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "phira:54120",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -27,
+        "agree_before": 0.4191,
+        "agree_after": 0.5179,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -27,
+        "agree_before": 0.1908,
+        "agree_candidate": 0.5673,
+        "agree_after": 0.5673,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:24316",
+      "source": "phira",
+      "split": "val",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.6085,
+        "agree_after": 0.7044,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.2656,
+        "agree_candidate": 0.7818,
+        "agree_after": 0.7818,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:48255",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.5562,
+        "agree_after": 0.6573,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.2004,
+        "agree_candidate": 0.6873,
+        "agree_after": 0.6873,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:39416",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -89,
+        "agree_before": 0.2585,
+        "agree_after": 0.1494,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -89,
+        "agree_before": 0.2956,
+        "agree_candidate": 0.4831,
+        "agree_after": 0.4831,
+        "action": "shift",
+        "shift_ms": -89,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:45615",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -27,
+        "agree_before": 0.6895,
+        "agree_after": 0.6573,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -27,
+        "agree_before": 0.2379,
+        "agree_candidate": 0.7419,
+        "agree_after": 0.7419,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:45431",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -29,
+        "agree_before": 0.4077,
+        "agree_after": 0.4267,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -29,
+        "agree_before": 0.2674,
+        "agree_candidate": 0.5676,
+        "agree_after": 0.5676,
+        "action": "shift",
+        "shift_ms": -29,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "phira:45200",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -27,
+        "agree_before": 0.4956,
+        "agree_after": 0.2102,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -27,
+        "agree_before": 0.1016,
+        "agree_candidate": 0.4956,
+        "agree_after": 0.4956,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:74467",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -27,
+        "agree_before": 0.7033,
+        "agree_after": 0.7999,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -27,
+        "agree_before": 0.0908,
+        "agree_candidate": 0.8107,
+        "agree_after": 0.8107,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:39699",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -53,
+        "agree_before": 0.3976,
+        "agree_after": 0.189,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -53,
+        "agree_before": 0.0669,
+        "agree_candidate": 0.7598,
+        "agree_after": 0.7598,
+        "action": "shift",
+        "shift_ms": -53,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "phira:73948",
+      "source": "phira",
+      "split": "test",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -39,
+        "agree_before": 0.7075,
+        "agree_after": 0.0181,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -39,
+        "agree_before": 0.0091,
+        "agree_candidate": 0.712,
+        "agree_after": 0.712,
+        "action": "shift",
+        "shift_ms": -39,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:37883",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": -2,
+        "r_ms": 39,
+        "agree_before": 0.2485,
+        "agree_after": 0.3982,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": -2,
+        "r_ms": 39,
+        "agree_before": 0.2395,
+        "agree_candidate": 0.4072,
+        "agree_after": 0.4072,
+        "action": "shift",
+        "shift_ms": 39,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:35824",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.6468,
+        "agree_after": 0.7421,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.0913,
+        "agree_candidate": 0.744,
+        "agree_after": 0.744,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:25406",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": -2,
+        "r_ms": -28,
+        "agree_before": 0.3472,
+        "agree_after": 0.4953,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": -2,
+        "r_ms": -28,
+        "agree_before": 0.3378,
+        "agree_candidate": 0.5016,
+        "agree_after": 0.5016,
+        "action": "shift",
+        "shift_ms": -28,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:35485",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 36,
+        "agree_before": 0.4418,
+        "agree_after": 0.0752,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 36,
+        "agree_before": 0.0705,
+        "agree_candidate": 0.671,
+        "agree_after": 0.671,
+        "action": "shift",
+        "shift_ms": 36,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:34102",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -34,
+        "agree_before": 0.7059,
+        "agree_after": 0.1399,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -34,
+        "agree_before": 0.2067,
+        "agree_candidate": 0.7059,
+        "agree_after": 0.7059,
+        "action": "shift",
+        "shift_ms": -34,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:8967",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -43,
+        "agree_before": 0.1873,
+        "agree_after": 0.3918,
+        "action": "shift",
+        "shift_ms": -43,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -43,
+        "agree_before": 0.2552,
+        "agree_candidate": 0.3763,
+        "agree_after": 0.2552,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": true,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "phira:30972",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -42,
+        "agree_before": 0.6948,
+        "agree_after": 0.1419,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -42,
+        "agree_before": 0.1142,
+        "agree_candidate": 0.6926,
+        "agree_after": 0.6926,
+        "action": "shift",
+        "shift_ms": -42,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:29692",
+      "source": "phira",
+      "split": "test",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -27,
+        "agree_before": 0.6845,
+        "agree_after": 0.1165,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -27,
+        "agree_before": 0.1238,
+        "agree_candidate": 0.6845,
+        "agree_after": 0.6845,
+        "action": "shift",
+        "shift_ms": -27,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:28629",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 30,
+        "agree_before": 0.4355,
+        "agree_after": 0.1301,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 30,
+        "agree_before": 0.1291,
+        "agree_candidate": 0.68,
+        "agree_after": 0.68,
+        "action": "shift",
+        "shift_ms": 30,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:28466",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -39,
+        "agree_before": 0.9149,
+        "agree_after": 0.0426,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -39,
+        "agree_before": 0.0,
+        "agree_candidate": 0.9149,
+        "agree_after": 0.9149,
+        "action": "shift",
+        "shift_ms": -39,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:28431",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -33,
+        "agree_before": 0.6754,
+        "agree_after": 0.1541,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -33,
+        "agree_before": 0.0417,
+        "agree_candidate": 0.6841,
+        "agree_after": 0.6841,
+        "action": "shift",
+        "shift_ms": -33,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:27941",
+      "source": "phira",
+      "split": "val",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 52,
+        "agree_before": 0.0351,
+        "agree_after": 0.0497,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 52,
+        "agree_before": 0.2602,
+        "agree_candidate": 0.6667,
+        "agree_after": 0.6667,
+        "action": "shift",
+        "shift_ms": 52,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:24408",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 29,
+        "agree_before": 0.0754,
+        "agree_after": 0.1234,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 29,
+        "agree_before": 0.1234,
+        "agree_candidate": 0.891,
+        "agree_after": 0.891,
+        "action": "shift",
+        "shift_ms": 29,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:23530",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -37,
+        "agree_before": 0.9271,
+        "agree_after": 0.0323,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -37,
+        "agree_before": 0.0096,
+        "agree_candidate": 0.9427,
+        "agree_after": 0.9427,
+        "action": "shift",
+        "shift_ms": -37,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:22020",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -33,
+        "agree_before": 0.842,
+        "agree_after": 0.0296,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -33,
+        "agree_before": 0.0321,
+        "agree_candidate": 0.842,
+        "agree_after": 0.842,
+        "action": "shift",
+        "shift_ms": -33,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:19842",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -64,
+        "agree_before": 0.0188,
+        "agree_after": 0.0047,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -64,
+        "agree_before": 0.011,
+        "agree_candidate": 0.8589,
+        "agree_after": 0.8589,
+        "action": "shift",
+        "shift_ms": -64,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:19803",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 26,
+        "agree_before": 0.296,
+        "agree_after": 0.1832,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 26,
+        "agree_before": 0.1807,
+        "agree_candidate": 0.6975,
+        "agree_after": 0.6975,
+        "action": "shift",
+        "shift_ms": 26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:17676",
+      "source": "phira",
+      "split": "val",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.7749,
+        "agree_after": 0.8412,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.0948,
+        "agree_candidate": 0.8531,
+        "agree_after": 0.8531,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:36844",
+      "source": "phira",
+      "split": "val",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -39,
+        "agree_before": 0.2455,
+        "agree_after": 0.3737,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -39,
+        "agree_before": 0.189,
+        "agree_candidate": 0.4285,
+        "agree_after": 0.4285,
+        "action": "shift",
+        "shift_ms": -39,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": false
+    },
+    {
+      "chart_id": "phira:15654",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -30,
+        "agree_before": 0.8051,
+        "agree_after": 0.9454,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -30,
+        "agree_before": 0.1311,
+        "agree_candidate": 0.9381,
+        "agree_after": 0.9381,
+        "action": "shift",
+        "shift_ms": -30,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:13099",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -30,
+        "agree_before": 0.6883,
+        "agree_after": 0.7662,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -30,
+        "agree_before": 0.1818,
+        "agree_candidate": 0.8052,
+        "agree_after": 0.8052,
+        "action": "shift",
+        "shift_ms": -30,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:11019",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 35,
+        "agree_before": 0.0827,
+        "agree_after": 0.0512,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 35,
+        "agree_before": 0.0768,
+        "agree_candidate": 0.7441,
+        "agree_after": 0.7441,
+        "action": "shift",
+        "shift_ms": 35,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:64888",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": -2,
+        "r_ms": -28,
+        "agree_before": 0.2839,
+        "agree_after": 0.4277,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": -2,
+        "r_ms": -28,
+        "agree_before": 0.2766,
+        "agree_candidate": 0.4625,
+        "agree_after": 0.4625,
+        "action": "shift",
+        "shift_ms": -28,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:66040",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": 57,
+        "agree_before": 0.2797,
+        "agree_after": 0.4283,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": 57,
+        "agree_before": 0.287,
+        "agree_candidate": 0.4384,
+        "agree_after": 0.4384,
+        "action": "shift",
+        "shift_ms": 57,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:65503",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -29,
+        "agree_before": 0.7562,
+        "agree_after": 0.0767,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -29,
+        "agree_before": 0.0689,
+        "agree_candidate": 0.7562,
+        "agree_after": 0.7562,
+        "action": "shift",
+        "shift_ms": -29,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:63813",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -37,
+        "agree_before": 0.6785,
+        "agree_after": 0.119,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -37,
+        "agree_before": 0.0501,
+        "agree_candidate": 0.7015,
+        "agree_after": 0.7015,
+        "action": "shift",
+        "shift_ms": -37,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:51279",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 31,
+        "agree_before": 0.422,
+        "agree_after": 0.178,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 31,
+        "agree_before": 0.1139,
+        "agree_candidate": 0.5665,
+        "agree_after": 0.5665,
+        "action": "shift",
+        "shift_ms": 31,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:36398",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": -2,
+        "r_ms": 39,
+        "agree_before": 0.2485,
+        "agree_after": 0.3982,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": -2,
+        "r_ms": 39,
+        "agree_before": 0.2395,
+        "agree_candidate": 0.4072,
+        "agree_after": 0.4072,
+        "action": "shift",
+        "shift_ms": 39,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:15129",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -31,
+        "agree_before": 0.6897,
+        "agree_after": 0.0598,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -31,
+        "agree_before": 0.0588,
+        "agree_candidate": 0.6907,
+        "agree_after": 0.6907,
+        "action": "shift",
+        "shift_ms": -31,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:54659",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.6517,
+        "agree_after": 0.7017,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.164,
+        "agree_candidate": 0.7017,
+        "agree_after": 0.7017,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:53675",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": -26,
+        "agree_before": 0.5758,
+        "agree_after": 0.153,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": -26,
+        "agree_before": 0.0834,
+        "agree_candidate": 0.5744,
+        "agree_after": 0.5744,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:52095",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 43,
+        "agree_before": 0.3024,
+        "agree_after": 0.0648,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 43,
+        "agree_before": 0.0243,
+        "agree_candidate": 0.5266,
+        "agree_after": 0.5266,
+        "action": "shift",
+        "shift_ms": 43,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:50795",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.4596,
+        "agree_after": 0.5244,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -26,
+        "agree_before": 0.1258,
+        "agree_candidate": 0.5198,
+        "agree_after": 0.5198,
+        "action": "shift",
+        "shift_ms": -26,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:51605",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 52,
+        "agree_before": 0.4241,
+        "agree_after": 0.0714,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 52,
+        "agree_before": 0.1295,
+        "agree_candidate": 0.6228,
+        "agree_after": 0.6228,
+        "action": "shift",
+        "shift_ms": 52,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:48105",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 10,
+        "r_ms": -30,
+        "agree_before": 0.6565,
+        "agree_after": 0.6586,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 10,
+        "r_ms": -30,
+        "agree_before": 0.1518,
+        "agree_candidate": 0.6586,
+        "agree_after": 0.6586,
+        "action": "shift",
+        "shift_ms": -30,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    },
+    {
+      "chart_id": "phira:50845",
+      "source": "phira",
+      "split": "train",
+      "old": {
+        "c_ms": 29,
+        "r_ms": 30,
+        "agree_before": 0.1515,
+        "agree_after": 0.2073,
+        "action": "quarantine",
+        "shift_ms": 0,
+        "reasons": [
+          "offset_low_agree_after",
+          "offset_insufficient_gain"
+        ],
+        "c_basis": "source_codec"
+      },
+      "new": {
+        "decision_version": 2,
+        "c_ms": 29,
+        "r_ms": 30,
+        "agree_before": 0.201,
+        "agree_candidate": 0.5885,
+        "agree_after": 0.5885,
+        "action": "shift",
+        "shift_ms": 30,
+        "reasons": [],
+        "c_basis": "source_codec"
+      },
+      "eligible_before": false,
+      "eligible_after": true
+    }
+  ]
+}

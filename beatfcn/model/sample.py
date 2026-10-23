@@ -9,6 +9,7 @@ reproducibility (design: inference.greedy_available_for_reproducibility).
 from __future__ import annotations
 import copy
 import math
+import time
 import numpy as np
 import torch
 from torch.nn import functional as F
@@ -31,7 +32,7 @@ def _pick(logits, mask, rng, temperature, top_p, greedy):
 
 @torch.no_grad()
 def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs, observed_heads, *,
-                  temperature=0.8, top_p=0.95, greedy=False, seed=0, device='cpu'):
+                  temperature=0.8, top_p=0.95, greedy=False, seed=0, device='cpu', diagnostics=None, deadline=None):
     """Returns generated groups in CoreExample.groups format (t_rel_us, notes[...])."""
     c = model.c
     rng = torch.Generator(device='cpu').manual_seed(seed)
@@ -40,7 +41,12 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
     holds = list(observed_holds)  # (onset_abs, end_abs, lane) incl. generated context holds
     c0 = ex.c0_us
     t_prev = -1
+    ended = False
+    timed_out = False
     for _ in range(FE.MAX_GROUPS):
+        if deadline is not None and time.perf_counter() >= deadline:
+            timed_out = True
+            break
         # right-lookahead rows for the current teacher-forced prefix
         times = [c0 - 1] + [c0 + g['t_rel_us'] for g in work.groups]
         work.right = np.array([_right(t, observed_heads, runs) for t in times], np.float32)
@@ -55,6 +61,7 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
         logits, mask, ok = model.time_logits(bt, hrow, pa, fi, torch.tensor([[t_prev / 1e6 if t_prev >= 0 else -0.001]], device=device))
         k = _pick(logits[0, 0].cpu(), mask[0, 0].cpu(), rng, temperature, top_p, greedy)
         if k == 0:
+            ended = True
             break
         if k <= FE.CORE_BINS:
             b = k - 1
@@ -69,9 +76,16 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
         for a, e, lane in holds:
             if lane >= 0 and a < t_abs < e:
                 busy[lane] = True
+        for onset, lane, _ in observed_heads:
+            if onset == t_abs and lane >= 0:
+                busy[lane] = True
         right_new = np.array(_right(t_abs - 1, observed_heads, runs), np.float32)
         notes = _inner(model, bt, hrow[:, 0], pa, fi, t_rel, right_new, busy, song, ex, t_abs, holds, runs, rng,
-                       temperature, top_p, greedy, device)
+                       temperature, top_p, greedy, device, observed_heads)
+        if not notes:
+            # No legal note at this time. Advance the cursor, without emitting an empty group.
+            t_prev = t_rel
+            continue
         g = {'t_rel_us': t_rel, 'bin': t_rel // FE.BIN_US, 'residual': t_rel % FE.BIN_US // FE.MS, 'copy': copy_idx,
              'notes': notes, 'busy_lanes': busy, 'right_new': right_new}
         work.groups.append(g)
@@ -79,6 +93,9 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
             if 'end_rel_us' in n:
                 holds.append((t_abs, t_abs + n['end_rel_us'], n['lane']))
         t_prev = t_rel
+    if diagnostics is not None:
+        diagnostics.update(terminated_by_end=ended, group_limit_reached=not ended and not timed_out,
+                           deadline_reached=timed_out)
     return work.groups
 
 
@@ -89,7 +106,7 @@ def _right(t, observed_heads, runs):
     return (min(dt, 60.0), nxt[1] if nxt else -1, nxt[2] if nxt else -1, min((run_end - t) / FE.SEC, 60.0))
 
 
-def _inner(model, bt, h, pa, fi, t_rel, right_new, busy, song, ex, t_abs, holds, runs, rng, temperature, top_p, greedy, device):
+def _inner(model, bt, h, pa, fi, t_rel, right_new, busy, song, ex, t_abs, holds, runs, rng, temperature, top_p, greedy, device, observed_heads=()):
     c = model.c
     mode = int(bt['mode'][0])
     hs = model.gru_init(h, pa, fi, torch.tensor([t_rel / FE.SEC], device=device), torch.from_numpy(right_new)[None].to(device),
@@ -127,7 +144,7 @@ def _inner(model, bt, h, pa, fi, t_rel, right_new, busy, song, ex, t_abs, holds,
                                          torch.tensor([[n['x']]], device=device)], -1))
         dur = 0.0
         if typ == 1:
-            end = _hold_end(model, o2, song, t_abs, n, holds, runs, rng, temperature, top_p, greedy, device)
+            end = _hold_end(model, o2, song, t_abs, n, holds, runs, rng, temperature, top_p, greedy, device, observed_heads)
             if end is None:  # no legal end: fall back to tap if allowed, else stop the group
                 if not bool(allowed[0]):
                     break
@@ -152,11 +169,14 @@ def _sample_x(params, rng, greedy):
     return float((mu[k] + log_s[k].exp() * (u.log() - (1 - u).log())).clamp(-1, 1))
 
 
-def _hold_end(model, o, song, onset, n, holds, runs, rng, temperature, top_p, greedy, device):
+def _hold_end(model, o, song, onset, n, holds, runs, rng, temperature, top_p, greedy, device, observed_heads=()):
     run_end = next((b for a, b in runs if a <= onset < b), onset)
     hi = run_end
     if n['lane'] >= 0:
         for a, e, lane in holds:
+            if lane == n['lane'] and a > onset:
+                hi = min(hi, a)
+        for a, lane, _ in observed_heads:
             if lane == n['lane'] and a > onset:
                 hi = min(hi, a)
     lo = onset + 1

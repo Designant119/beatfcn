@@ -18,34 +18,68 @@ class GraphedStep:
         self.before_capture = before_capture
         self.capture = capture and self.dev.type == 'cuda'
         self.warmup, self.static, self.graph, self.out = warmup, None, None, None
+        self.microbatches = None
         self.seen = 0
 
     # ------------------------------------------------------------ static inputs
     def fill(self, bt, w_select: float):
         """Copy a (device-resident audio, host metadata) batch into the static buffers."""
-        if self.static is None:
-            self.static = {k: (torch.empty_like(v, device=self.dev) if torch.is_tensor(v) else v) for k, v in bt.items()}
-            self.static['w_select'] = torch.zeros((), device=self.dev)
-        for k, v in bt.items():
-            if torch.is_tensor(v):
-                s = self.static[k]
-                if s.shape != v.shape or s.dtype != v.dtype:
-                    raise ValueError(f'static shape/dtype mismatch for {k}: {tuple(v.shape)} {v.dtype} vs {tuple(s.shape)} {s.dtype}')
-                s.copy_(v, non_blocking=True)
-            else:
-                self.static[k] = v
-        self.static['w_select'].fill_(w_select)
+        self.fill_many([bt], w_select)
+
+    def fill_many(self, batches, w_select: float):
+        """Fixed accumulation slots; shapes may differ between slots, never across replays.
+
+        No sample is cropped/resampled and no summary is pooled differently to fit a graph.
+        Loss scaling matches ordinary gradient accumulation.
+        """
+        if not batches:
+            raise ValueError('at least one microbatch is required')
+        if not any(getattr(getattr(r.model, 'c', None), 'compact_inner', False) for r in self.runs):
+            # Dynamic optional compaction metadata must not invalidate the existing padded graph path.
+            batches = [{k:v for k,v in b.items() if k not in ('inner_index','hold_inner_index')} for b in batches]
+        if self.microbatches is None:
+            self.microbatches = []
+            for bt in batches:
+                buf = {k: (torch.empty_like(v, device=self.dev) if torch.is_tensor(v) else v) for k, v in bt.items()}
+                buf['w_select'] = torch.zeros((), device=self.dev)
+                self.microbatches.append(buf)
+            self.static = self.microbatches[0]
+        if len(batches) != len(self.microbatches):
+            raise ValueError('accumulation count cannot change after buffers are allocated')
+        for bt, buf in zip(batches, self.microbatches):
+            if set(bt) - {'w_select'} != set(buf) - {'w_select'}:
+                raise ValueError('input keys changed after buffers were allocated')
+            for k, v in bt.items():
+                if torch.is_tensor(v):
+                    s = buf[k]
+                    if s.shape != v.shape or s.dtype != v.dtype:
+                        raise ValueError(f'static shape/dtype mismatch for {k}: {tuple(v.shape)} {v.dtype} vs {tuple(s.shape)} {s.dtype}')
+                    s.copy_(v, non_blocking=True)
+                else:
+                    buf[k] = v
+            buf['w_select'].fill_(w_select)
 
     # ------------------------------------------------------------ the step
     def _body(self):
         cuda = self.dev.type == 'cuda'
         mets = []
         for r in self.runs:
-            b = dict(self.static)  # the model pops/replaces entries (dequant): never on the shared dict
-            with torch.autocast(self.dev.type, dtype=torch.bfloat16, enabled=cuda, cache_enabled=False):
-                loss, met = r.model(b)
-            loss.backward()
-            mets.append(met)
+            acc = {}
+            for bt in self.microbatches:
+                b = dict(bt)  # the model pops/replaces entries (dequant): never on shared buffers
+                with torch.autocast(self.dev.type, dtype=torch.bfloat16, enabled=cuda, cache_enabled=False):
+                    loss, met = r.model(b)
+                (loss / len(self.microbatches)).backward()
+                for k, value in met.items():
+                    if k == '_illegal':
+                        acc[k] = acc.get(k, 0) + value
+                    else:
+                        l, n, c = value
+                        a = acc.setdefault(k, [0., 0, 0])
+                        a[0], a[1], a[2] = a[0] + l * n, a[1] + n, a[2] + c
+            # Public format remains (mean loss, count, correct), without host synchronization.
+            mets.append({k: (value if k == '_illegal' else
+                            (value[0] / value[1].clamp(min=1), value[1], value[2])) for k, value in acc.items()})
         norms = []
         for r in self.runs:
             norms.append(torch.nn.utils.clip_grad_norm_(r.model.parameters(), self.clip))

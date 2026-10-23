@@ -64,6 +64,10 @@ Volume `beatfcn-weights`：`teacher_encoder.safetensors`（在 Modal 内按 pinn
 
 ## 修订日志
 
+- 2026-10-23 v5（offset 实现修正，筛选阈值不变）：
+  - 实际模型坐标仍为原生时间 + c + shift；候选 shift=r=δ−c。现在比较 `agree(c+r)` 与 `agree(c)`，修复过去将残差 r 当作绝对诊断平移的错误。`agree_candidate` 是候选吻合率，`agree_before` 是应用 c 后的基线，`agree_after` 是最终所选变换的吻合率，`decision_version=2`。
+  - 本次重算保持既有 split 与来源常数 c 不变，完整清单 24,048 行中 64 张 offset 决定改变；训练筛选新增 41 张、移除 1 张。其他质量隔离、叠键与难度规则仍参与判断，offset 恢复不代表整张自动入训。
+  - 云端新训练使用独立版本化清单和内容指纹；旧原生谱、旧清单与冻结音频缓存不覆盖。详细迁移记录见 `reports/offset_migration_2026-10-23.json`。
 - 2026-10-22 v1：初版。
 - 2026-10-22 v2（全量接入后，Claude）：
   - **规模**：osu 4K 解析 18,958 张、保留 18,766 张（6,834 段音频，350 h；不支持的 v11–v13 共 450 张）；Phira 候选按 §1 收紧为 2,855 张，保留 2,103 张。train：osu 15,055 张 / 4,069 首 / 283 h，Phira 1,696 张 / 1,298 首 / 78 h；val、test 各约 510 首 osu、150–170 首 Phira。跨来源同曲 413 组。以上 osu 数量包含 loved，训练选取时再排除。

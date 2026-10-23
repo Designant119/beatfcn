@@ -205,7 +205,24 @@ def collate_meta(examples: list[F.CoreExample], infos: list[SongInfo], taps: tup
         out['hold_' + key] = torch.tensor(hold[key] + [0] * pad, dtype=torch.long)
     recipe['Hp'] = Hp
     out['_audio'] = recipe
+    prepare_inner_indices(out)
     return out
+
+
+def prepare_inner_indices(bt):
+    """CPU-side indices for optional compaction of padded GRU rows; no labels are removed."""
+    if bt['grp_valid'].device.type != 'cpu':
+        raise ValueError('inner indices must be prepared on CPU before device transfer')
+    valid = bt['grp_valid'].flatten()
+    indices = torch.where(valid)[0]
+    if not len(indices):
+        indices = torch.zeros(1, dtype=torch.long)  # masked dummy keeps the empty-batch loss well-defined
+    inverse = torch.zeros(len(valid), dtype=torch.long)
+    inverse[indices] = torch.arange(len(indices))
+    hi = bt['hold_index']
+    bt['inner_index'] = indices
+    bt['hold_inner_index'] = inverse[hi[:, 0] * bt['grp_valid'].shape[1] + hi[:, 1]]
+    return bt
 
 
 def _dslice(t, start, n, out):

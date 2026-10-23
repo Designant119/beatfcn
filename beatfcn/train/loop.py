@@ -42,7 +42,7 @@ class CoreSampler:
     volumes); each resident song serves `residence` draws and is then replaced by a fresh random song.
     Batches still mix songs; only the read pattern changes."""
 
-    def __init__(self, charts, load, song_cache, seed, salient=None, pool=0, residence=4, limits=None):
+    def __init__(self, charts, load, song_cache, seed, salient=None, pool=0, residence=4, limits=None, audit=None):
         """limits: per-core caps {'G','K','R','A','holds'} (static-shape training); cores beyond them are
         skipped here, so a batch never has to be thrown away at collate time."""
         self.charts, self.load, self.song_cache = charts, load, song_cache
@@ -58,15 +58,36 @@ class CoreSampler:
         w = np.array([math.sqrt(len(by_mode[m])) for m in modes])
         self.modes, self.mode_p = modes, w / w.sum()
         self.skipped = {}
+        self.audit = audit
 
     def core(self, chart_row, seed):
+        trace = {**chart_row, 'seed': int(seed), 'stage': 'chart', 'accepted': False}
+        try:
+            ex = self._core(chart_row, seed, trace)
+            trace.update(stage='accepted', accepted=True)
+            ex.provenance = {k: trace[k] for k in ('chart_id', 'song', 'mode', 'seed', 'c0_us')}
+            return ex
+        except (F.SkipExample, ValueError, AssertionError) as exc:
+            trace['reason'] = f'{type(exc).__name__}:{exc}'
+            raise
+        finally:
+            if self.audit is not None:
+                self.audit(trace)
+
+    def _core(self, chart_row, seed, trace):
         chart = self.load(chart_row['chart_id'])
+        trace['stage'] = 'request'
         kw = {'salient_candidates_us': self.salient(chart_row['song'])} if self.salient else {}
         s = sample_request(chart, seed=seed, audio_id=chart_row['song'], audio_duration_us=chart_row['duration_us'], **kw)
         if not s.ok:
             raise F.SkipExample('model view quarantine')
+        trace.update(stage='core', kind=s.recipe.get('kind'))
         c0 = F.choose_core(s, np.random.default_rng([seed, 1]), chart_row['duration_us'])
+        trace['c0_us'] = c0
         ex = F.build_core(s, chart.events, c0, chart_row['duration_us'])
+        trace.update(stage='bounds', groups=len(ex.groups), known=len(ex.known), refs=len(ex.refs),
+                     notes=sum(len(g['notes']) for g in ex.groups),
+                     holds=sum('end_rel_us' in n for g in ex.groups for n in g['notes']))
         if any(len(tg['notes']) > MAX_NOTES for tg in ex.groups):  # collate would raise mid-batch (crashed S1 at step ~130)
             raise F.SkipExample('group has more notes than MAX_NOTES')
         if self.limits:
@@ -75,6 +96,7 @@ class CoreSampler:
             over = [k for k, v in sizes.items() if k in self.limits and v > self.limits[k]]
             if over:
                 raise F.SkipExample('static limit: ' + ','.join(f'{k}={sizes[k]}' for k in over))
+        trace['stage'] = 'targets'
         bad = F.check_targets(ex)
         if bad:
             raise F.SkipExample('illegal_target:' + ','.join(bad))

@@ -54,12 +54,35 @@ def diag(delta, conf=4.0, edge=False, a0=0.2, ar=None, n=100, at=None):
 
 
 class OffsetDecision(unittest.TestCase):
+    def test_decision_uses_the_actual_training_clock(self):
+        from beatfcn.train.data import model_shift_us
+        heads = np.arange(1, 101, dtype=float)
+        env = np.zeros(10300)
+        for i, h in enumerate(heads):
+            delay, amplitude = (0.06, 10.) if i < 20 else (0.08, 1.)
+            env[round((h + delay) / OFF.HOP_SEC)] = amplitude
+        diagnostic = OFF.estimate_offset(heads, env=env)
+        decision = OFF.decide(diagnostic, c_ms=14)
+        self.assertEqual(decision['action'], 'shift', decision)
+        actual = model_shift_us({'offset_decision': decision}, True) // 1000
+        self.assertEqual(actual, 60)
+        self.assertEqual(decision['agree_before'], OFF.agree_at(diagnostic, 14))
+        self.assertEqual(decision['agree_after'], OFF.agree_at(diagnostic, actual))
+
+    def test_gain_is_measured_from_system_corrected_baseline(self):
+        diagnostic = diag(60, a0=0.0, ar=0.8)
+        diagnostic['agree_counts'][214] = 75
+        decision = OFF.decide(diagnostic, c_ms=14)
+        self.assertEqual(decision['action'], 'quarantine')
+        self.assertIn('offset_insufficient_gain', decision['reasons'])
+        self.assertEqual(decision['agree_before'], 0.75)
+
     def test_keep_within_25_regardless_of_conf(self):
         d = OFF.decide(diag(30, conf=1.0), c_ms=10)
         self.assertEqual((d['action'], d['shift_ms'], d['r_ms']), ('keep', 0, 20))
 
     def test_shift(self):
-        d = OFF.decide(diag(60, a0=0.2, ar=0.8, at=50 + 200), c_ms=10)
+        d = OFF.decide(diag(60, a0=0.2, ar=0.8), c_ms=10)
         self.assertEqual((d['action'], d['shift_ms']), ('shift', 50))
         self.assertEqual(d['agree_after'], 0.8)
 

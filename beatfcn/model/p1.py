@@ -55,6 +55,7 @@ class P1Config:
     fine_branch: bool = True
     gather_after_time: bool = True
     packed: bool = False  # FlexAttention packed path (same math; measured slower than padded SDPA, and its nonzero() cannot be graph-captured)
+    compact_inner: bool = False  # optional CPU-indexed GRU compaction; audio/attention and all targets unchanged
 
 
 class RMSNorm(nn.Module):
@@ -674,19 +675,22 @@ class P1Model(nn.Module):
     def _inner(self, bt, hg, ptr_audio, fine, m):
         """Inner note decoder over all B x G group slots (fixed MAX_NOTES + 1 GRU steps; masks carry validity)."""
         B, G, _ = hg.shape
-        N, dev = B * G, hg.device
-        valid = bt['grp_valid'].reshape(N)
-        hs = self.gru_init_bg(hg, ptr_audio, fine, bt['grp_t'], bt['right_new'], bt['busy']).reshape(N, -1)
-        n_notes = (bt['grp_n'] * bt['grp_valid']).reshape(N)
+        slots, dev = B * G, hg.device
+        index = bt['inner_index'] if self.c.compact_inner else None
+        select = lambda t: t if index is None else t.index_select(0, index)
+        flat = lambda t: select(t.reshape(slots, *t.shape[2:]))
+        valid = flat(bt['grp_valid'])
+        hs = select(self.gru_init_bg(hg, ptr_audio, fine, bt['grp_t'], bt['right_new'], bt['busy']).reshape(slots, -1))
+        N = hs.shape[0]
+        n_notes = flat(bt['grp_n'] * bt['grp_valid'])
         tl, ts, tx = self._target_loc(bt)
-        flat = lambda t: t.reshape(N, *t.shape[2:])
         typ, lane, line = flat(bt['note_type']), flat(bt['note_lane']), flat(tl)
         side, x, dur = flat(ts), flat(tx), flat(bt['note_dur'])
         true_line, true_side, true_x = flat(bt['note_line']), flat(bt['note_side']), flat(bt['note_x'])
-        mode = bt['mode'].repeat_interleave(G)
+        mode = select(bt['mode'].repeat_interleave(G))
         # per-mode legal note types (buffer: a host->device constant copy is not allowed during graph capture)
-        allowed = (bt['allowed_types'] & self.mode_types[bt['mode']]).repeat_interleave(G, 0)
-        n_lines = bt['lines'].repeat_interleave(G)
+        allowed = select((bt['allowed_types'] & self.mode_types[bt['mode']]).repeat_interleave(G, 0))
+        n_lines = select(bt['lines'].repeat_interleave(G))
         used = flat(bt['busy']).clone()
         acc = {k: [] for k in ('cont', 'type', 'lane', 'line', 'side')}
         x_nll, o2_steps = [], []
@@ -736,7 +740,8 @@ class P1Model(nn.Module):
             m['x'] = ((nll * w).sum() / n.clamp(min=1), n, zero, zero)
         hi = bt['hold_index']  # [H,3] (b, g, n); collate pads holds and marks them in hold_valid
         if hi.shape[0]:
-            o = torch.stack(o2_steps, 1)[hi[:, 0] * G + hi[:, 1], hi[:, 2]]
+            inner_rows = bt['hold_inner_index'] if self.c.compact_inner else hi[:, 0] * G + hi[:, 1]
+            o = torch.stack(o2_steps, 1)[inner_rows, hi[:, 2]]
             self._hold(bt, torch.arange(hi.shape[0], device=dev), o, m, bt.get('hold_valid'))
 
     def _hold(self, bt, k, o, m, valid=None):

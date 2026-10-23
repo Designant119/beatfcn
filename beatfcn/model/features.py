@@ -97,6 +97,7 @@ class CoreExample:
     groups: list = field(default_factory=list)  # targets, see target_group()
     lines: int = 0
     right: np.ndarray = None  # [G+1, 4] per outer row: s to next observed head, its lane/line, s to editable-run end
+    provenance: dict = field(default_factory=dict)  # chart/request/core identity; never a model input
 
 
 def target_group(g, c0, line_index, copy_list, hold_limit) -> dict:

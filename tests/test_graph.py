@@ -38,6 +38,28 @@ def _static_batch(n, seed):
 
 
 class GraphedStepTests(unittest.TestCase):
+    def test_accumulation_keeps_dynamic_shapes_and_matches_plain_updates(self):
+        torch.manual_seed(42)
+        reference = P1Model(CFG)
+        candidate = copy.deepcopy(reference)
+        a = torch.optim.AdamW(reference.parameters(), lr=1e-3)
+        b = torch.optim.AdamW(candidate.parameters(), lr=1e-3)
+        batches = [batch(2, seed=1), batch(3, seed=5)]
+        graph = GraphedStep([_Run(candidate, b)], 1., 'cpu', capture=False)
+        for _ in range(2):
+            for bt in batches:
+                loss, _ = reference(dict(bt))
+                (loss / len(batches)).backward()
+            torch.nn.utils.clip_grad_norm_(reference.parameters(), 1.)
+            a.step()
+            a.zero_grad(set_to_none=True)
+            graph.fill_many(batches, 0.)
+            graph.step()
+        for (name, p), q in zip(reference.named_parameters(), candidate.parameters()):
+            torch.testing.assert_close(p, q, atol=1e-6, rtol=1e-5, msg=name)
+        with self.assertRaisesRegex(ValueError, 'accumulation count'):
+            graph.fill_many(batches[:1], 0.)
+
     def test_static_batches_share_one_shape(self):
         a, b = _static_batch(3, 1), _static_batch(5, 2)
         for k in ('grp_t', 'known', 'refs', 'copy_t', 'summary', 'hold_index', 'hold_detail'):

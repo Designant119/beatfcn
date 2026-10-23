@@ -6,12 +6,12 @@ score(s) = mean envelope at (note head + s), s in [-200, 200] ms, 1 ms steps; de
 delta > 0 means the notes sit EARLY relative to the audio (audio onset at head + delta).
 conf = (score(delta) - median(score)) / std(score). agree(s) = fraction of heads (+s) within
 +-20 ms of an envelope peak (> 0.5); the full agree curve is kept as integer counts so the
-decision stage can evaluate it at any residual r without the audio.
+decision stage can evaluate actual model-clock shifts without the audio.
 
 Decision (only a global shift of the model view, never per-note snapping; native chart untouched):
   r = delta - c, c = per-(source, codec) train median of delta (rounded to 1 ms).
   |r| <= 25                                       -> keep
-  25 < |r| <= 120, conf >= 3, agree(r)-agree(0) >= 0.15, agree(r) >= 0.3, not edge -> shift by r
+  25 < |r| <= 120, conf >= 3, agree(c+r)-agree(c) >= 0.15, agree(c+r) >= 0.3, not edge -> shift by r
   anything else                                    -> quarantine with every failing reason
 """
 from __future__ import annotations
@@ -26,6 +26,7 @@ EDGE_GUARD_SEC = 0.25
 MIN_HEADS = 20
 V1 = {'keep_ms': 25, 'shift_max_ms': 120, 'min_conf': 3.0, 'min_gain': 0.15, 'min_agree_after': 0.3,
       'disagree_ms': 25}
+DECISION_VERSION = 2
 
 
 def flux_envelope(mel: np.ndarray) -> np.ndarray:
@@ -86,14 +87,22 @@ def train_constant(deltas) -> int | None:
 
 
 def decide(diag: dict, c_ms: int, th=V1) -> dict:
-    """Apply the v1 rule. Returns action keep|shift|quarantine, shift_ms (model-view shift), reasons."""
+    """Compare model clocks c and c+r; shift_ms is the residual added ON TOP of c.
+
+    agree_candidate describes the proposed correction, including rejected proposals.
+    agree_after describes the selected transform (c+shift_ms), even for keep.
+    """
     if diag.get('status') != 'ok':
         return {'action': 'quarantine', 'shift_ms': 0, 'c_ms': c_ms, 'r_ms': None,
+                'decision_version': DECISION_VERSION, 'agree_candidate': None,
                 'agree_before': None, 'agree_after': None, 'reasons': [f'offset_{diag.get("status", "missing")}']}
     r = int(diag['delta_ms']) - int(c_ms)
-    a0, ar = agree_at(diag, 0), agree_at(diag, r)
-    out = {'c_ms': int(c_ms), 'r_ms': r, 'agree_before': round(a0, 4),
-           'agree_after': None if ar is None else round(ar, 4)}
+    a0, ar = agree_at(diag, c_ms), agree_at(diag, c_ms + r)
+    rounded = lambda a: None if a is None else round(a, 4)
+    out = {'decision_version': DECISION_VERSION, 'c_ms': int(c_ms), 'r_ms': r,
+           'agree_before': rounded(a0), 'agree_candidate': rounded(ar), 'agree_after': rounded(a0)}
+    if a0 is None:
+        return dict(out, action='quarantine', shift_ms=0, reasons=['offset_baseline_out_of_range'])
     if abs(r) <= th['keep_ms']:
         return dict(out, action='keep', shift_ms=0, reasons=[])
     reasons = []
@@ -109,7 +118,7 @@ def decide(diag: dict, c_ms: int, th=V1) -> dict:
         reasons.append('offset_insufficient_gain')
     if reasons:
         return dict(out, action='quarantine', shift_ms=0, reasons=reasons)
-    return dict(out, action='shift', shift_ms=r, reasons=[])
+    return dict(out, action='shift', shift_ms=r, agree_after=rounded(ar), reasons=[])
 
 
 def disagreement_flags(rows, th=V1) -> set:

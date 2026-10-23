@@ -1,6 +1,6 @@
 # 训练框架 review 指南（2026-10-23 版）
 
-目标读者：要审阅 P1 训练代码的人。按数据流顺序读，每节给出文件、入口函数、它保证的不变量，以及"审阅时值得盯的点"。行号对应提交 `f4d0da4`。
+目标读者：要审阅 P1 训练代码的人。按数据流顺序读，每节给出文件、入口函数、它保证的不变量，以及"审阅时值得盯的点"。旧行号对应提交 `f4d0da4`；offset v2、审计和整曲评测补充见 §9，以函数名定位现版本。
 
 ## 0. 一张图
 
@@ -89,7 +89,7 @@ mel10/<sha>.npy ───────┘       │
 
 ## 6. 测试与等价性检查
 
-- `tests/`：108 个单元测试（`python -m unittest discover -s tests`）。
+- `tests/`：127 个单元测试通过（本地，`python -m unittest discover -s tests`；未验证真实 CUDA Graph）。
 - 关键的"改前后数值一致"检查脚本在会话 scratchpad（`ref_metrics.py`、`packed_eq.py`、`bm_check.py`），比较参考批次上各头的损失/样本数/正确数和梯度范数。改动模型或打包后应重跑：目前基准 `ref_metrics_before.json`（去同步之前）与现版本一致。
 - 云端 bench：`bench_train_gpu`（显卡侧每步时间）、`bench_graph`（数据路径 + 图化 + 数值）、`diag_worker`（worker 启动分段计时）。
 
@@ -110,4 +110,16 @@ mel10/<sha>.npy ───────┘       │
 - 样本离线预生成（研究报告排第一的做法）未实现；目前 CPU 侧每份约 0.1 秒，靠加核数扩展。
 - `S2`（LoRA）训练循环（`train_s2`）仍是旧数据路径，未改成歌曲池 / 图化；窗口去重按批内下标而非歌曲，冻结的 1–20 层每步重算。
 - 断点续训只恢复模型、优化器和步数；采样序列用 `seed + 7919 × 续训步` 换种子，不是精确接续；RNG 状态未保存。
-- `prep` 文件只核对行数，不核对清单内容指纹。
+- 当前 `prep` 和 checkpoint 已校验所选清单内容指纹；旧缓存不满足新基线要求。
+
+## 9. offset 修复后的基线与验收（2026-10-23）
+
+- `ingest/offset.py::decide`：`decision_version=2`。模型实际坐标为原生时间 + c + shift；shift 候选为 r=δ−c。门槛比较 `agree(c+r)` 与 `agree(c)`，不是 `agree(r)` 与 `agree(0)`。诊断保留候选吻合率和最终所选变换的吻合率。
+- `train/audit.py` 与 `scripts/audit_training_data.py`：全量重算保持 split、c 不变；对 315 张可用真实谱、1,260 个固定请求逐阶段审计。动态接受 1,235 次，静态 1,097 次；长按尾部分层的接受率从动态 94.4% 降到静态 41.1%。这是额外静态限制的样本偏差，不是 CUDA Graph 本身的缺陷。
+- `CoreSampler.core` 记录拒绝阶段、原因和请求身份；`CoreExample.provenance` 仅作审计，不进入模型。`train` 记录交给训练的批次身份和 worker 累计计数。`load_manifest` 支持指定版本化清单；严格 v2、内容指纹进入 prep 和 checkpoint，禁止混用旧偏移基线。
+- `model/evaluation.py::generate_song` 连续生成整曲，用模型输出延续上下文。`evaluate_songs` 固定留出歌曲、无答案派生密度控制、失败不重采样；报告起音、类型/键位匹配、长按头尾、整曲完成率与独立合法性。Phira 未启用的位置能力明确不计入评测。
+- `cloud/baseline_app.py` 先做两种 GPU 的同样本计算诊断，再建立新基线与整曲流程试跑。计算诊断不能证明端到端质量/费用；`train/comparison.py` 不按最低计算费用自动宣布胜出。
+- 验收目标为质量不退、端到端时间和总费用不增、至少一项改善。费用包含 GPU 的数据等待和空转，以及 CPU/内存/预处理/评测。利用率是诊断量；模型效果与达到目标质量的时间/费用才是决策依据。
+- 真实 CUDA Graph 等价性与分桶/回退尚待实现和上卡验证。动态参考基线保留全部既有可用样本，不能用静态删样或压缩长歌摘要冒充等价加速。
+
+固定数据、审计分层数字、评测范围及报价见 `reports/training_baseline_plan_2026-10-23.md`。本地测试不等于 GPU 等价性或训练效果证明。

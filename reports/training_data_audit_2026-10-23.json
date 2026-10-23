@@ -1,0 +1,3658 @@
+{
+  "schema": "beatfcn.data_audit.v1",
+  "rows_sha256": "f73e7f3bdc2810a303ebaec0a06ac1c94e4eb49e9240916832dee42eeeab7faa",
+  "seed": 20261023,
+  "charts": 320,
+  "usable_charts": 315,
+  "corpus_rejected_charts": [
+    "phira:52928",
+    "phira:28525",
+    "phira:52826",
+    "phira:16601",
+    "phira:32788"
+  ],
+  "requests_per_chart": 4,
+  "sampling": "uniform charts per mode plus separately labelled stress tails; not production-weighted",
+  "audio_dimensions": "duration-derived for collate; actual mel for salient evidence",
+  "dynamic": {
+    "stages": {
+      "mode": {
+        "mania_4k": {
+          "attempted": 640,
+          "accepted": 624,
+          "accept_rate": 0.975,
+          "reject_stages": {
+            "core": 12,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 12,
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        },
+        "phira": {
+          "attempted": 620,
+          "accepted": 611,
+          "accept_rate": 0.98548,
+          "reject_stages": {
+            "core": 9
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 3,
+            "SkipExample:reference evidence exceeds bound": 6
+          }
+        }
+      },
+      "stratum": {
+        "dense_tail": {
+          "attempted": 120,
+          "accepted": 110,
+          "accept_rate": 0.91667,
+          "reject_stages": {
+            "core": 10
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 9,
+            "SkipExample:groups exceed bound": 1
+          }
+        },
+        "hold_tail": {
+          "attempted": 124,
+          "accepted": 117,
+          "accept_rate": 0.94355,
+          "reject_stages": {
+            "core": 7
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 7
+          }
+        },
+        "uniform_chart": {
+          "attempted": 1016,
+          "accepted": 1008,
+          "accept_rate": 0.99213,
+          "reject_stages": {
+            "core": 4,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2,
+            "ValueError:osu:L889 outside audio duration": 4,
+            "SkipExample:groups exceed bound": 2
+          }
+        }
+      },
+      "kind": {
+        "continuation": {
+          "attempted": 199,
+          "accepted": 198,
+          "accept_rate": 0.99497,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 1
+          }
+        },
+        "from_scratch": {
+          "attempted": 237,
+          "accepted": 236,
+          "accept_rate": 0.99578,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 1
+          }
+        },
+        "middle_holes": {
+          "attempted": 328,
+          "accepted": 328,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "reference": {
+          "attempted": 267,
+          "accepted": 248,
+          "accept_rate": 0.92884,
+          "reject_stages": {
+            "core": 19
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 18,
+            "SkipExample:groups exceed bound": 1
+          }
+        },
+        "sparse_anchors": {
+          "attempted": 225,
+          "accepted": 225,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "unknown": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "request": 4
+          },
+          "reasons": {
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        }
+      },
+      "density_band": {
+        "4-8": {
+          "attempted": 504,
+          "accepted": 500,
+          "accept_rate": 0.99206,
+          "reject_stages": {
+            "request": 4
+          },
+          "reasons": {
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        },
+        "8-16": {
+          "attempted": 448,
+          "accepted": 443,
+          "accept_rate": 0.98884,
+          "reject_stages": {
+            "core": 5
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 5
+          }
+        },
+        "<4": {
+          "attempted": 148,
+          "accepted": 148,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        ">=16": {
+          "attempted": 160,
+          "accepted": 144,
+          "accept_rate": 0.9,
+          "reject_stages": {
+            "core": 16
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 13,
+            "SkipExample:groups exceed bound": 3
+          }
+        }
+      },
+      "hold_band": {
+        "0": {
+          "attempted": 80,
+          "accepted": 78,
+          "accept_rate": 0.975,
+          "reject_stages": {
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2
+          }
+        },
+        "<0.2": {
+          "attempted": 820,
+          "accepted": 809,
+          "accept_rate": 0.98659,
+          "reject_stages": {
+            "core": 11
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 8,
+            "SkipExample:groups exceed bound": 3
+          }
+        },
+        ">=0.2": {
+          "attempted": 360,
+          "accepted": 348,
+          "accept_rate": 0.96667,
+          "reject_stages": {
+            "core": 8,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 8,
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        }
+      },
+      "difficulty": {
+        "4K August Night": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4K Easy Lv. 5": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4K HD": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4K Normal": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4k Beginner | Comet": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4k normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.15": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.16": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.17": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.18": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "AT Lv.13": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.15": {
+          "attempted": 44,
+          "accepted": 42,
+          "accept_rate": 0.95455,
+          "reject_stages": {
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 2
+          }
+        },
+        "AT Lv.16": {
+          "attempted": 64,
+          "accepted": 63,
+          "accept_rate": 0.98438,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "AT Lv.17": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.17.2": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.18": {
+          "attempted": 40,
+          "accepted": 38,
+          "accept_rate": 0.95,
+          "reject_stages": {
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2
+          }
+        },
+        "AT Lv.18+": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.19": {
+          "attempted": 12,
+          "accepted": 11,
+          "accept_rate": 0.91667,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "AT.Lv.15": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 1
+          }
+        },
+        "Advanced": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ahtobwrck": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Akasha's Another": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Andre's Catchy Adventure!!": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Auto's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ayyri's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "BASIC": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Beginner": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Beyond | Crescendo": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Brave For Your First Step": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "CS' Insane": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Cannibalistic Warlords": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Chicken hod's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Crazy Genetics": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "DH's Easy": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Denouement": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Draftnell's ADVANCED": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Dreams and smiles are diamonds": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Drifting Luminescence": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "EZ": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "EZ Lv.6": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Easy": {
+          "attempted": 40,
+          "accepted": 40,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Electrocution": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Extra": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Extra: Inverse": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "FRAWOG": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "FULL DiMENSiONS": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "FURRY GODS": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2
+          }
+        },
+        "Fateful Confrontation": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Felix's Presentiment": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ferdi's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Feru's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "GOD": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "H4chyk0's MAXIMUM": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "HARD": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "HD Lv.11": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "HD Lv.9": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Hard": {
+          "attempted": 32,
+          "accepted": 32,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Hard // Gloominess": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "He's returning with bags of Wabaloobunga...": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Hodgepodge": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Hoshizora": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Hyper Slop": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN": {
+          "attempted": 32,
+          "accepted": 32,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.12": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.13": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.14": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.15": {
+          "attempted": 24,
+          "accepted": 24,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.15.1": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.16": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN 14": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN 8": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.11": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.12": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.13": {
+          "attempted": 40,
+          "accepted": 40,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.14": {
+          "attempted": 100,
+          "accepted": 100,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.15": {
+          "attempted": 100,
+          "accepted": 100,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.16": {
+          "attempted": 16,
+          "accepted": 16,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.16.0": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.16.2": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.17": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "IN lv14": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN.15": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN.Lv.14": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IcyBath's Secret": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ihram's Easy": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Insane": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "InterStellar": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Intermediate": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ja wciaz wracam po wiecej": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Justice": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Keilann's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "LN Aurora Australis": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "LN Extra": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Leggendaria": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Long Distance [3200m]": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Lv.5": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Majestic Presence": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Midnight Blue // Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Misattunement": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2
+          }
+        },
+        "Mono's DEATH": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Mono's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Murumoo's Hyper": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NM": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NORMAL": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NORMAL!": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NOVICE": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Nakazawa's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Normal": {
+          "attempted": 56,
+          "accepted": 56,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Normal!": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Novice || Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Num's 4K Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "P45ta's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "PLAY TRAILS": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "PRESENT": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Parallel Universe": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "PolyGera's Lunatic": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Predetermination": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Princess Knight": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "RC Aurora Borealis": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Reaching the Top": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Regret": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Rem's ADVANCED": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "SC": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "SVvii": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "request": 4
+          },
+          "reasons": {
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        },
+        "Sigrdrifumal // Kilotek vs. Domajnyk Pear": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Spooky Carnival": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Spy x S.Star's Hyper": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Summer Memories": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Sya's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "T9JILECTb | Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Till November Night (reprise)": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Touru's MAXIMUM": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ultra": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Wonki's MAXIMUM": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Yes, Indeed": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "You Are My Treasure": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "[H | SV] DRATER's MAKE IT FLUFFY NOW": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "a normal end": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "advanced": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "aqua's Another": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "crystal chamber combustion": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "earth-scorching": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "easy": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "em2's expert": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "hexe's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "insane": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "let your colours bloom": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "mint's Extreme": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "mourning": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "netzoid's Hard // Out of Control": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "qqq's Hyper": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "roxie's nothingless": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "snapshot lifespan": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "t h e  f i r s t  n o t e ~BadDragon~": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "victorica's HARD": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        }
+      }
+    },
+    "batches": 39,
+    "collate_rejected_batches": 0,
+    "attempted": 1260,
+    "accepted": 1235,
+    "collated": 1235
+  },
+  "static": {
+    "stages": {
+      "mode": {
+        "mania_4k": {
+          "attempted": 640,
+          "accepted": 514,
+          "accept_rate": 0.80312,
+          "reject_stages": {
+            "bounds": 110,
+            "core": 12,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=113": 2,
+            "SkipExample:static limit: holds=60": 2,
+            "SkipExample:static limit: holds=48": 1,
+            "SkipExample:static limit: holds=42": 2,
+            "SkipExample:static limit: holds=55": 1,
+            "SkipExample:static limit: holds=37": 3,
+            "SkipExample:static limit: holds=95": 2,
+            "SkipExample:static limit: holds=72": 2,
+            "SkipExample:static limit: holds=101": 2,
+            "SkipExample:reference evidence exceeds bound": 12,
+            "SkipExample:static limit: holds=88": 1,
+            "SkipExample:static limit: holds=43": 2,
+            "SkipExample:static limit: holds=73": 1,
+            "SkipExample:static limit: holds=38": 2,
+            "SkipExample:static limit: holds=34": 3,
+            "ValueError:osu:L889 outside audio duration": 4,
+            "SkipExample:static limit: holds=39": 2,
+            "SkipExample:static limit: holds=53": 1,
+            "SkipExample:static limit: holds=62": 1,
+            "SkipExample:static limit: K=296": 1,
+            "SkipExample:static limit: holds=68": 1,
+            "SkipExample:static limit: holds=33": 1,
+            "SkipExample:static limit: holds=35": 2,
+            "SkipExample:static limit: holds=57": 1,
+            "SkipExample:static limit: K=327": 1,
+            "SkipExample:static limit: holds=41": 1,
+            "SkipExample:static limit: holds=80": 1,
+            "SkipExample:static limit: holds=61": 1,
+            "SkipExample:static limit: holds=117": 3,
+            "SkipExample:static limit: G=214": 1,
+            "SkipExample:static limit: G=148": 2,
+            "SkipExample:static limit: G=174": 1,
+            "SkipExample:static limit: G=170": 1,
+            "SkipExample:static limit: G=201": 1,
+            "SkipExample:static limit: G=181": 1,
+            "SkipExample:static limit: G=188": 1,
+            "SkipExample:static limit: G=139": 2,
+            "SkipExample:static limit: G=132": 2,
+            "SkipExample:static limit: G=193": 1,
+            "SkipExample:static limit: G=161": 1,
+            "SkipExample:static limit: G=145": 1,
+            "SkipExample:static limit: G=169": 1,
+            "SkipExample:static limit: G=168": 1,
+            "SkipExample:static limit: K=305": 1,
+            "SkipExample:static limit: G=151": 2,
+            "SkipExample:static limit: G=200": 1,
+            "SkipExample:static limit: G=152": 1,
+            "SkipExample:static limit: K=268": 1,
+            "SkipExample:static limit: G=142": 1,
+            "SkipExample:static limit: G=133,holds=153": 1,
+            "SkipExample:static limit: holds=169": 2,
+            "SkipExample:static limit: holds=133": 1,
+            "SkipExample:static limit: holds=134": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=81": 1,
+            "SkipExample:static limit: G=158,holds=145": 1,
+            "SkipExample:static limit: holds=126": 1,
+            "SkipExample:static limit: holds=97": 3,
+            "SkipExample:static limit: holds=78": 2,
+            "SkipExample:static limit: holds=64": 2,
+            "SkipExample:static limit: holds=100": 2,
+            "SkipExample:static limit: holds=131": 1,
+            "SkipExample:static limit: holds=36": 1,
+            "SkipExample:static limit: holds=99": 1,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=140": 1,
+            "SkipExample:static limit: holds=122": 1,
+            "SkipExample:static limit: holds=70": 1,
+            "SkipExample:static limit: holds=125": 2,
+            "SkipExample:static limit: holds=165": 1,
+            "SkipExample:static limit: holds=127": 1,
+            "SkipExample:static limit: holds=116": 1,
+            "SkipExample:static limit: holds=102": 1,
+            "SkipExample:static limit: holds=79": 1,
+            "SkipExample:static limit: holds=85": 1,
+            "SkipExample:static limit: holds=128": 1,
+            "SkipExample:static limit: holds=74": 1,
+            "SkipExample:static limit: holds=76": 1,
+            "SkipExample:static limit: holds=40": 1,
+            "SkipExample:static limit: holds=84": 1,
+            "SkipExample:static limit: holds=94": 1,
+            "SkipExample:static limit: holds=103": 1,
+            "SkipExample:static limit: holds=110": 1,
+            "SkipExample:static limit: holds=89": 1,
+            "SkipExample:static limit: holds=148": 1
+          }
+        },
+        "phira": {
+          "attempted": 620,
+          "accepted": 583,
+          "accept_rate": 0.94032,
+          "reject_stages": {
+            "core": 9,
+            "bounds": 28
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 3,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=64": 1,
+            "SkipExample:static limit: holds=33": 2,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:reference evidence exceeds bound": 6,
+            "SkipExample:static limit: K=460": 1,
+            "SkipExample:static limit: G=248": 1,
+            "SkipExample:static limit: G=192,A=44": 1,
+            "SkipExample:static limit: G=194": 1,
+            "SkipExample:static limit: G=129": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: K=292": 1,
+            "SkipExample:static limit: G=141": 1,
+            "SkipExample:static limit: G=238": 1,
+            "SkipExample:static limit: holds=41": 1,
+            "SkipExample:static limit: holds=70": 1,
+            "SkipExample:static limit: holds=72": 2,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=47": 1,
+            "SkipExample:static limit: holds=40": 1,
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:static limit: holds=34": 1,
+            "SkipExample:static limit: holds=43": 1,
+            "SkipExample:static limit: holds=36": 1,
+            "SkipExample:static limit: holds=48": 1,
+            "SkipExample:static limit: holds=42": 1
+          }
+        }
+      },
+      "stratum": {
+        "dense_tail": {
+          "attempted": 120,
+          "accepted": 75,
+          "accept_rate": 0.625,
+          "reject_stages": {
+            "bounds": 35,
+            "core": 10
+          },
+          "reasons": {
+            "SkipExample:static limit: G=214": 1,
+            "SkipExample:reference evidence exceeds bound": 9,
+            "SkipExample:static limit: G=148": 2,
+            "SkipExample:static limit: G=174": 1,
+            "SkipExample:static limit: G=170": 1,
+            "SkipExample:static limit: G=201": 1,
+            "SkipExample:static limit: G=181": 1,
+            "SkipExample:static limit: G=188": 1,
+            "SkipExample:static limit: G=139": 2,
+            "SkipExample:static limit: G=132": 2,
+            "SkipExample:static limit: G=193": 1,
+            "SkipExample:static limit: G=161": 1,
+            "SkipExample:static limit: G=145": 1,
+            "SkipExample:static limit: G=169": 1,
+            "SkipExample:static limit: G=168": 1,
+            "SkipExample:static limit: K=305": 1,
+            "SkipExample:static limit: G=151": 2,
+            "SkipExample:static limit: G=200": 1,
+            "SkipExample:static limit: G=152": 1,
+            "SkipExample:static limit: K=268": 1,
+            "SkipExample:static limit: G=142": 1,
+            "SkipExample:static limit: K=460": 1,
+            "SkipExample:static limit: G=248": 1,
+            "SkipExample:static limit: G=192,A=44": 1,
+            "SkipExample:static limit: G=194": 1,
+            "SkipExample:static limit: G=129": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: K=292": 1,
+            "SkipExample:static limit: G=141": 1,
+            "SkipExample:groups exceed bound": 1,
+            "SkipExample:static limit: G=238": 1,
+            "SkipExample:static limit: holds=41": 1
+          }
+        },
+        "hold_tail": {
+          "attempted": 124,
+          "accepted": 51,
+          "accept_rate": 0.41129,
+          "reject_stages": {
+            "bounds": 66,
+            "core": 7
+          },
+          "reasons": {
+            "SkipExample:static limit: G=133,holds=153": 1,
+            "SkipExample:static limit: holds=169": 2,
+            "SkipExample:static limit: holds=60": 1,
+            "SkipExample:static limit: holds=133": 1,
+            "SkipExample:reference evidence exceeds bound": 7,
+            "SkipExample:static limit: holds=134": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=81": 1,
+            "SkipExample:static limit: G=158,holds=145": 1,
+            "SkipExample:static limit: holds=126": 1,
+            "SkipExample:static limit: holds=97": 3,
+            "SkipExample:static limit: holds=78": 2,
+            "SkipExample:static limit: holds=39": 2,
+            "SkipExample:static limit: holds=64": 2,
+            "SkipExample:static limit: holds=117": 2,
+            "SkipExample:static limit: holds=100": 2,
+            "SkipExample:static limit: holds=113": 1,
+            "SkipExample:static limit: holds=131": 1,
+            "SkipExample:static limit: holds=36": 2,
+            "SkipExample:static limit: holds=99": 1,
+            "SkipExample:static limit: holds=95": 1,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=56": 2,
+            "SkipExample:static limit: holds=140": 1,
+            "SkipExample:static limit: holds=122": 1,
+            "SkipExample:static limit: holds=70": 2,
+            "SkipExample:static limit: holds=125": 2,
+            "SkipExample:static limit: holds=165": 1,
+            "SkipExample:static limit: holds=127": 1,
+            "SkipExample:static limit: holds=116": 1,
+            "SkipExample:static limit: holds=102": 1,
+            "SkipExample:static limit: holds=79": 1,
+            "SkipExample:static limit: holds=34": 2,
+            "SkipExample:static limit: holds=85": 1,
+            "SkipExample:static limit: holds=128": 1,
+            "SkipExample:static limit: holds=74": 1,
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:static limit: holds=72": 3,
+            "SkipExample:static limit: holds=76": 1,
+            "SkipExample:static limit: holds=40": 2,
+            "SkipExample:static limit: holds=84": 1,
+            "SkipExample:static limit: holds=94": 1,
+            "SkipExample:static limit: holds=103": 1,
+            "SkipExample:static limit: holds=110": 1,
+            "SkipExample:static limit: holds=89": 1,
+            "SkipExample:static limit: holds=148": 1,
+            "SkipExample:static limit: holds=47": 1,
+            "SkipExample:static limit: holds=33": 1,
+            "SkipExample:static limit: holds=43": 1,
+            "SkipExample:static limit: holds=48": 1,
+            "SkipExample:static limit: holds=42": 1
+          }
+        },
+        "uniform_chart": {
+          "attempted": 1016,
+          "accepted": 971,
+          "accept_rate": 0.95571,
+          "reject_stages": {
+            "bounds": 37,
+            "core": 4,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=113": 1,
+            "SkipExample:static limit: holds=60": 1,
+            "SkipExample:static limit: holds=48": 1,
+            "SkipExample:static limit: holds=42": 2,
+            "SkipExample:static limit: holds=55": 1,
+            "SkipExample:static limit: holds=37": 4,
+            "SkipExample:static limit: holds=95": 1,
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:reference evidence exceeds bound": 2,
+            "SkipExample:static limit: holds=88": 1,
+            "SkipExample:static limit: holds=43": 2,
+            "SkipExample:static limit: holds=73": 1,
+            "SkipExample:static limit: holds=38": 2,
+            "SkipExample:static limit: holds=34": 2,
+            "ValueError:osu:L889 outside audio duration": 4,
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:static limit: holds=53": 1,
+            "SkipExample:static limit: holds=62": 1,
+            "SkipExample:static limit: K=296": 1,
+            "SkipExample:static limit: holds=68": 1,
+            "SkipExample:static limit: holds=33": 2,
+            "SkipExample:static limit: holds=35": 2,
+            "SkipExample:static limit: holds=57": 1,
+            "SkipExample:static limit: K=327": 1,
+            "SkipExample:static limit: holds=41": 1,
+            "SkipExample:static limit: holds=80": 1,
+            "SkipExample:static limit: holds=61": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:groups exceed bound": 2,
+            "SkipExample:static limit: holds=64": 1
+          }
+        }
+      },
+      "kind": {
+        "continuation": {
+          "attempted": 199,
+          "accepted": 173,
+          "accept_rate": 0.86935,
+          "reject_stages": {
+            "bounds": 25,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=42": 1,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=88": 1,
+            "SkipExample:static limit: holds=43": 2,
+            "SkipExample:static limit: holds=62": 1,
+            "SkipExample:static limit: holds=34": 2,
+            "SkipExample:static limit: G=174": 1,
+            "SkipExample:static limit: G=132": 1,
+            "SkipExample:static limit: G=168": 1,
+            "SkipExample:static limit: G=151": 1,
+            "SkipExample:static limit: G=152": 1,
+            "SkipExample:static limit: G=142": 1,
+            "SkipExample:static limit: holds=169": 1,
+            "SkipExample:static limit: holds=100": 1,
+            "SkipExample:static limit: holds=131": 1,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:static limit: holds=103": 1,
+            "SkipExample:groups exceed bound": 1,
+            "SkipExample:static limit: holds=64": 1,
+            "SkipExample:static limit: G=248": 1,
+            "SkipExample:static limit: G=194": 1,
+            "SkipExample:static limit: G=129": 1,
+            "SkipExample:static limit: holds=41": 1
+          }
+        },
+        "from_scratch": {
+          "attempted": 237,
+          "accepted": 206,
+          "accept_rate": 0.8692,
+          "reject_stages": {
+            "bounds": 30,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=60": 1,
+            "SkipExample:static limit: holds=48": 2,
+            "SkipExample:static limit: holds=55": 1,
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:static limit: holds=35": 2,
+            "SkipExample:static limit: holds=41": 1,
+            "SkipExample:static limit: G=214": 1,
+            "SkipExample:static limit: G=170": 1,
+            "SkipExample:static limit: G=201": 1,
+            "SkipExample:static limit: G=139": 2,
+            "SkipExample:static limit: G=132": 1,
+            "SkipExample:static limit: holds=81": 1,
+            "SkipExample:static limit: G=158,holds=145": 1,
+            "SkipExample:static limit: holds=126": 1,
+            "SkipExample:static limit: holds=36": 1,
+            "SkipExample:static limit: holds=165": 1,
+            "SkipExample:static limit: holds=127": 1,
+            "SkipExample:static limit: holds=116": 1,
+            "SkipExample:static limit: holds=125": 1,
+            "SkipExample:static limit: holds=128": 1,
+            "SkipExample:static limit: holds=84": 1,
+            "SkipExample:static limit: holds=89": 1,
+            "SkipExample:static limit: G=141": 1,
+            "SkipExample:groups exceed bound": 1,
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=42": 1
+          }
+        },
+        "middle_holes": {
+          "attempted": 328,
+          "accepted": 296,
+          "accept_rate": 0.90244,
+          "reject_stages": {
+            "bounds": 32
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=34": 1,
+            "SkipExample:static limit: holds=43": 1,
+            "SkipExample:static limit: holds=37": 2,
+            "SkipExample:static limit: holds=61": 1,
+            "SkipExample:static limit: G=181": 1,
+            "SkipExample:static limit: G=193": 1,
+            "SkipExample:static limit: G=169": 1,
+            "SkipExample:static limit: K=305": 1,
+            "SkipExample:static limit: K=268": 1,
+            "SkipExample:static limit: holds=134": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=64": 2,
+            "SkipExample:static limit: holds=78": 1,
+            "SkipExample:static limit: holds=99": 1,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=122": 1,
+            "SkipExample:static limit: holds=70": 2,
+            "SkipExample:static limit: holds=125": 1,
+            "SkipExample:static limit: holds=102": 1,
+            "SkipExample:static limit: holds=85": 1,
+            "SkipExample:static limit: holds=74": 1,
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=40": 1,
+            "SkipExample:static limit: holds=148": 1,
+            "SkipExample:static limit: holds=33": 2,
+            "SkipExample:static limit: K=460": 1,
+            "SkipExample:static limit: K=292": 1,
+            "SkipExample:static limit: holds=39": 1
+          }
+        },
+        "reference": {
+          "attempted": 267,
+          "accepted": 219,
+          "accept_rate": 0.82022,
+          "reject_stages": {
+            "bounds": 29,
+            "core": 19
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=113": 2,
+            "SkipExample:static limit: holds=95": 1,
+            "SkipExample:reference evidence exceeds bound": 18,
+            "SkipExample:static limit: holds=53": 1,
+            "SkipExample:static limit: K=296": 1,
+            "SkipExample:static limit: holds=33": 1,
+            "SkipExample:static limit: holds=57": 1,
+            "SkipExample:static limit: K=327": 1,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: holds=42": 1,
+            "SkipExample:static limit: G=148": 2,
+            "SkipExample:static limit: G=188": 1,
+            "SkipExample:static limit: G=161": 1,
+            "SkipExample:static limit: G=200": 1,
+            "SkipExample:static limit: G=151": 1,
+            "SkipExample:static limit: holds=60": 1,
+            "SkipExample:static limit: holds=78": 1,
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:static limit: holds=79": 1,
+            "SkipExample:static limit: holds=34": 1,
+            "SkipExample:static limit: holds=76": 1,
+            "SkipExample:static limit: holds=110": 1,
+            "SkipExample:static limit: holds=97": 1,
+            "SkipExample:groups exceed bound": 1,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: G=238": 1,
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=40": 1
+          }
+        },
+        "sparse_anchors": {
+          "attempted": 225,
+          "accepted": 203,
+          "accept_rate": 0.90222,
+          "reject_stages": {
+            "bounds": 22
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=73": 1,
+            "SkipExample:static limit: holds=68": 1,
+            "SkipExample:static limit: holds=80": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:static limit: G=145": 1,
+            "SkipExample:static limit: G=133,holds=153": 1,
+            "SkipExample:static limit: holds=169": 1,
+            "SkipExample:static limit: holds=133": 1,
+            "SkipExample:static limit: holds=97": 2,
+            "SkipExample:static limit: holds=95": 1,
+            "SkipExample:static limit: holds=140": 1,
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:static limit: holds=94": 1,
+            "SkipExample:static limit: holds=100": 1,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: G=192,A=44": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=47": 1,
+            "SkipExample:static limit: holds=36": 1
+          }
+        },
+        "unknown": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "request": 4
+          },
+          "reasons": {
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        }
+      },
+      "density_band": {
+        "4-8": {
+          "attempted": 504,
+          "accepted": 487,
+          "accept_rate": 0.96627,
+          "reject_stages": {
+            "bounds": 13,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=34": 2,
+            "ValueError:osu:L889 outside audio duration": 4,
+            "SkipExample:static limit: holds=33": 2,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=42": 1,
+            "SkipExample:static limit: holds=64": 1,
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=47": 1,
+            "SkipExample:static limit: holds=40": 1
+          }
+        },
+        "8-16": {
+          "attempted": 448,
+          "accepted": 369,
+          "accept_rate": 0.82366,
+          "reject_stages": {
+            "bounds": 74,
+            "core": 5
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=113": 2,
+            "SkipExample:static limit: holds=60": 1,
+            "SkipExample:static limit: holds=48": 2,
+            "SkipExample:static limit: holds=42": 2,
+            "SkipExample:static limit: holds=55": 1,
+            "SkipExample:static limit: holds=37": 3,
+            "SkipExample:static limit: holds=95": 2,
+            "SkipExample:static limit: holds=72": 3,
+            "SkipExample:static limit: holds=88": 1,
+            "SkipExample:static limit: holds=43": 3,
+            "SkipExample:static limit: holds=73": 1,
+            "SkipExample:static limit: holds=39": 2,
+            "SkipExample:static limit: holds=53": 1,
+            "SkipExample:static limit: holds=62": 1,
+            "SkipExample:static limit: holds=68": 1,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: holds=57": 1,
+            "SkipExample:static limit: holds=41": 1,
+            "SkipExample:static limit: holds=80": 1,
+            "SkipExample:static limit: holds=61": 1,
+            "SkipExample:static limit: holds=117": 3,
+            "SkipExample:static limit: holds=64": 2,
+            "SkipExample:static limit: holds=100": 2,
+            "SkipExample:static limit: holds=131": 1,
+            "SkipExample:static limit: holds=36": 2,
+            "SkipExample:static limit: holds=78": 1,
+            "SkipExample:static limit: holds=99": 1,
+            "SkipExample:reference evidence exceeds bound": 5,
+            "SkipExample:static limit: holds=38": 2,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=97": 2,
+            "SkipExample:static limit: holds=140": 1,
+            "SkipExample:static limit: holds=122": 1,
+            "SkipExample:static limit: holds=70": 2,
+            "SkipExample:static limit: holds=125": 2,
+            "SkipExample:static limit: holds=165": 1,
+            "SkipExample:static limit: holds=127": 1,
+            "SkipExample:static limit: holds=116": 1,
+            "SkipExample:static limit: holds=102": 1,
+            "SkipExample:static limit: holds=79": 1,
+            "SkipExample:static limit: holds=34": 2,
+            "SkipExample:static limit: holds=85": 1,
+            "SkipExample:static limit: holds=128": 1,
+            "SkipExample:static limit: holds=74": 1,
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:static limit: holds=76": 1,
+            "SkipExample:static limit: holds=40": 1,
+            "SkipExample:static limit: holds=84": 1,
+            "SkipExample:static limit: holds=94": 1,
+            "SkipExample:static limit: holds=103": 1,
+            "SkipExample:static limit: holds=110": 1,
+            "SkipExample:static limit: holds=89": 1,
+            "SkipExample:static limit: holds=148": 1,
+            "SkipExample:static limit: holds=33": 1
+          }
+        },
+        "<4": {
+          "attempted": 148,
+          "accepted": 148,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        ">=16": {
+          "attempted": 160,
+          "accepted": 93,
+          "accept_rate": 0.58125,
+          "reject_stages": {
+            "bounds": 51,
+            "core": 16
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:reference evidence exceeds bound": 13,
+            "SkipExample:static limit: K=296": 1,
+            "SkipExample:static limit: K=327": 1,
+            "SkipExample:static limit: G=214": 1,
+            "SkipExample:static limit: G=148": 2,
+            "SkipExample:static limit: G=174": 1,
+            "SkipExample:static limit: G=170": 1,
+            "SkipExample:static limit: G=201": 1,
+            "SkipExample:static limit: G=181": 1,
+            "SkipExample:static limit: G=188": 1,
+            "SkipExample:static limit: G=139": 2,
+            "SkipExample:static limit: G=132": 2,
+            "SkipExample:static limit: G=193": 1,
+            "SkipExample:static limit: G=161": 1,
+            "SkipExample:static limit: G=145": 1,
+            "SkipExample:static limit: G=169": 1,
+            "SkipExample:static limit: G=168": 1,
+            "SkipExample:static limit: K=305": 1,
+            "SkipExample:static limit: G=151": 2,
+            "SkipExample:static limit: G=200": 1,
+            "SkipExample:static limit: G=152": 1,
+            "SkipExample:static limit: K=268": 1,
+            "SkipExample:static limit: G=142": 1,
+            "SkipExample:static limit: G=133,holds=153": 1,
+            "SkipExample:static limit: holds=169": 2,
+            "SkipExample:static limit: holds=60": 1,
+            "SkipExample:static limit: holds=133": 1,
+            "SkipExample:static limit: holds=134": 1,
+            "SkipExample:static limit: holds=44": 2,
+            "SkipExample:static limit: holds=81": 1,
+            "SkipExample:static limit: G=158,holds=145": 1,
+            "SkipExample:static limit: holds=126": 1,
+            "SkipExample:static limit: holds=97": 1,
+            "SkipExample:static limit: holds=78": 1,
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:groups exceed bound": 3,
+            "SkipExample:static limit: K=460": 1,
+            "SkipExample:static limit: G=248": 1,
+            "SkipExample:static limit: G=192,A=44": 1,
+            "SkipExample:static limit: G=194": 1,
+            "SkipExample:static limit: G=129": 1,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: K=292": 1,
+            "SkipExample:static limit: G=141": 1,
+            "SkipExample:static limit: G=238": 1,
+            "SkipExample:static limit: holds=41": 1
+          }
+        }
+      },
+      "hold_band": {
+        "0": {
+          "attempted": 80,
+          "accepted": 65,
+          "accept_rate": 0.8125,
+          "reject_stages": {
+            "bounds": 13,
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: G=174": 1,
+            "SkipExample:static limit: G=170": 1,
+            "SkipExample:static limit: G=201": 1,
+            "SkipExample:reference evidence exceeds bound": 2,
+            "SkipExample:static limit: G=181": 1,
+            "SkipExample:static limit: G=188": 1,
+            "SkipExample:static limit: G=139": 2,
+            "SkipExample:static limit: G=132": 2,
+            "SkipExample:static limit: K=305": 1,
+            "SkipExample:static limit: G=151": 1,
+            "SkipExample:static limit: K=268": 1,
+            "SkipExample:static limit: G=142": 1
+          }
+        },
+        "<0.2": {
+          "attempted": 820,
+          "accepted": 782,
+          "accept_rate": 0.95366,
+          "reject_stages": {
+            "bounds": 27,
+            "core": 11
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=48": 1,
+            "SkipExample:static limit: holds=42": 1,
+            "SkipExample:static limit: K=296": 1,
+            "SkipExample:reference evidence exceeds bound": 8,
+            "SkipExample:static limit: K=327": 1,
+            "SkipExample:static limit: holds=41": 2,
+            "SkipExample:static limit: G=214": 1,
+            "SkipExample:static limit: G=148": 2,
+            "SkipExample:static limit: G=193": 1,
+            "SkipExample:static limit: G=161": 1,
+            "SkipExample:static limit: G=145": 1,
+            "SkipExample:static limit: G=169": 1,
+            "SkipExample:static limit: G=168": 1,
+            "SkipExample:static limit: G=200": 1,
+            "SkipExample:static limit: G=151": 1,
+            "SkipExample:static limit: G=152": 1,
+            "SkipExample:groups exceed bound": 3,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=33": 1,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: K=460": 1,
+            "SkipExample:static limit: G=248": 1,
+            "SkipExample:static limit: G=192,A=44": 1,
+            "SkipExample:static limit: G=194": 1,
+            "SkipExample:static limit: K=292": 1,
+            "SkipExample:static limit: G=141": 1,
+            "SkipExample:static limit: G=238": 1
+          }
+        },
+        ">=0.2": {
+          "attempted": 360,
+          "accepted": 250,
+          "accept_rate": 0.69444,
+          "reject_stages": {
+            "bounds": 98,
+            "core": 8,
+            "request": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=113": 2,
+            "SkipExample:static limit: holds=60": 2,
+            "SkipExample:static limit: holds=55": 1,
+            "SkipExample:static limit: holds=37": 3,
+            "SkipExample:static limit: holds=95": 2,
+            "SkipExample:static limit: holds=72": 4,
+            "SkipExample:static limit: holds=101": 2,
+            "SkipExample:reference evidence exceeds bound": 8,
+            "SkipExample:static limit: holds=88": 1,
+            "SkipExample:static limit: holds=43": 3,
+            "SkipExample:static limit: holds=73": 1,
+            "SkipExample:static limit: holds=38": 2,
+            "SkipExample:static limit: holds=34": 4,
+            "ValueError:osu:L889 outside audio duration": 4,
+            "SkipExample:static limit: holds=39": 3,
+            "SkipExample:static limit: holds=53": 1,
+            "SkipExample:static limit: holds=62": 1,
+            "SkipExample:static limit: holds=68": 1,
+            "SkipExample:static limit: holds=33": 2,
+            "SkipExample:static limit: holds=35": 3,
+            "SkipExample:static limit: holds=57": 1,
+            "SkipExample:static limit: holds=42": 2,
+            "SkipExample:static limit: holds=80": 1,
+            "SkipExample:static limit: holds=61": 1,
+            "SkipExample:static limit: holds=117": 3,
+            "SkipExample:static limit: G=133,holds=153": 1,
+            "SkipExample:static limit: holds=169": 2,
+            "SkipExample:static limit: holds=133": 1,
+            "SkipExample:static limit: holds=134": 1,
+            "SkipExample:static limit: holds=44": 2,
+            "SkipExample:static limit: holds=81": 1,
+            "SkipExample:static limit: G=158,holds=145": 1,
+            "SkipExample:static limit: holds=126": 1,
+            "SkipExample:static limit: holds=97": 3,
+            "SkipExample:static limit: holds=78": 2,
+            "SkipExample:static limit: holds=64": 3,
+            "SkipExample:static limit: holds=100": 2,
+            "SkipExample:static limit: holds=131": 1,
+            "SkipExample:static limit: holds=36": 2,
+            "SkipExample:static limit: holds=99": 1,
+            "SkipExample:static limit: holds=56": 2,
+            "SkipExample:static limit: holds=140": 1,
+            "SkipExample:static limit: holds=122": 1,
+            "SkipExample:static limit: holds=70": 2,
+            "SkipExample:static limit: holds=125": 2,
+            "SkipExample:static limit: holds=165": 1,
+            "SkipExample:static limit: holds=127": 1,
+            "SkipExample:static limit: holds=116": 1,
+            "SkipExample:static limit: holds=102": 1,
+            "SkipExample:static limit: holds=79": 1,
+            "SkipExample:static limit: holds=85": 1,
+            "SkipExample:static limit: holds=128": 1,
+            "SkipExample:static limit: holds=74": 1,
+            "SkipExample:static limit: holds=76": 1,
+            "SkipExample:static limit: holds=40": 2,
+            "SkipExample:static limit: holds=84": 1,
+            "SkipExample:static limit: holds=94": 1,
+            "SkipExample:static limit: holds=103": 1,
+            "SkipExample:static limit: holds=110": 1,
+            "SkipExample:static limit: holds=89": 1,
+            "SkipExample:static limit: holds=148": 1,
+            "SkipExample:static limit: G=129": 1,
+            "SkipExample:static limit: holds=47": 1,
+            "SkipExample:static limit: holds=48": 1
+          }
+        }
+      },
+      "difficulty": {
+        "4K August Night": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4K Easy Lv. 5": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4K HD": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4K Normal": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4k Beginner | Comet": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "4k normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.15": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.16": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.17": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT  Lv.18": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 1,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: K=292": 1,
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "AT Lv.13": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.15": {
+          "attempted": 44,
+          "accepted": 38,
+          "accept_rate": 0.86364,
+          "reject_stages": {
+            "core": 2,
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:groups exceed bound": 2,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=47": 1,
+            "SkipExample:static limit: holds=40": 1,
+            "SkipExample:static limit: holds=48": 1
+          }
+        },
+        "AT Lv.16": {
+          "attempted": 64,
+          "accepted": 57,
+          "accept_rate": 0.89062,
+          "reject_stages": {
+            "core": 1,
+            "bounds": 6
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1,
+            "SkipExample:static limit: K=460": 1,
+            "SkipExample:static limit: G=248": 1,
+            "SkipExample:static limit: G=192,A=44": 1,
+            "SkipExample:static limit: holds=34": 1,
+            "SkipExample:static limit: holds=72": 1,
+            "SkipExample:static limit: holds=43": 1
+          }
+        },
+        "AT Lv.17": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.17.2": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=33": 1
+          }
+        },
+        "AT Lv.18": {
+          "attempted": 40,
+          "accepted": 33,
+          "accept_rate": 0.825,
+          "reject_stages": {
+            "core": 2,
+            "bounds": 5
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2,
+            "SkipExample:static limit: G=129": 1,
+            "SkipExample:static limit: holds=44": 1,
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: holds=41": 1,
+            "SkipExample:static limit: holds=42": 1
+          }
+        },
+        "AT Lv.18+": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "AT Lv.19": {
+          "attempted": 12,
+          "accepted": 10,
+          "accept_rate": 0.83333,
+          "reject_stages": {
+            "bounds": 1,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: G=194": 1,
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "AT.Lv.15": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 2,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: G=141": 1,
+            "SkipExample:groups exceed bound": 1,
+            "SkipExample:static limit: G=238": 1
+          }
+        },
+        "Advanced": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ahtobwrck": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=140": 1,
+            "SkipExample:static limit: holds=64": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:static limit: holds=122": 1
+          }
+        },
+        "Akasha's Another": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=43": 1,
+            "SkipExample:static limit: holds=37": 1
+          }
+        },
+        "Andre's Catchy Adventure!!": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Auto's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ayyri's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "BASIC": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Beginner": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Beyond | Crescendo": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=68": 1
+          }
+        },
+        "Brave For Your First Step": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=55": 1,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=95": 1
+          }
+        },
+        "CS' Insane": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=62": 1
+          }
+        },
+        "Cannibalistic Warlords": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "core": 1,
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1,
+            "SkipExample:static limit: G=145": 1
+          }
+        },
+        "Chicken hod's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Crazy Genetics": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=131": 1,
+            "SkipExample:static limit: holds=36": 1,
+            "SkipExample:static limit: holds=78": 1,
+            "SkipExample:static limit: holds=99": 1
+          }
+        },
+        "DH's Easy": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Denouement": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 2,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=81": 1,
+            "SkipExample:static limit: G=158,holds=145": 1,
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Draftnell's ADVANCED": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Dreams and smiles are diamonds": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=72": 1
+          }
+        },
+        "Drifting Luminescence": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=42": 1
+          }
+        },
+        "EZ": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "EZ Lv.6": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Easy": {
+          "attempted": 40,
+          "accepted": 40,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Electrocution": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: G=139": 1,
+            "SkipExample:static limit: G=132": 1
+          }
+        },
+        "Extra": {
+          "attempted": 8,
+          "accepted": 1,
+          "accept_rate": 0.125,
+          "reject_stages": {
+            "bounds": 7
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=80": 1,
+            "SkipExample:static limit: holds=61": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:static limit: holds=76": 1,
+            "SkipExample:static limit: holds=40": 1,
+            "SkipExample:static limit: holds=84": 1,
+            "SkipExample:static limit: holds=94": 1
+          }
+        },
+        "Extra: Inverse": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=103": 1,
+            "SkipExample:static limit: holds=100": 1,
+            "SkipExample:static limit: holds=110": 1
+          }
+        },
+        "FRAWOG": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: G=174": 1,
+            "SkipExample:static limit: G=170": 1,
+            "SkipExample:static limit: G=201": 1
+          }
+        },
+        "FULL DiMENSiONS": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 3,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=133": 1,
+            "SkipExample:reference evidence exceeds bound": 1,
+            "SkipExample:static limit: holds=134": 1,
+            "SkipExample:static limit: holds=44": 1
+          }
+        },
+        "FURRY GODS": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "core": 2,
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2,
+            "SkipExample:static limit: G=181": 1,
+            "SkipExample:static limit: G=188": 1
+          }
+        },
+        "Fateful Confrontation": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Felix's Presentiment": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=95": 1,
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=56": 1,
+            "SkipExample:static limit: holds=97": 1
+          }
+        },
+        "Ferdi's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Feru's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "GOD": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "core": 1,
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1,
+            "SkipExample:static limit: holds=97": 1,
+            "SkipExample:static limit: holds=89": 1,
+            "SkipExample:static limit: holds=148": 1
+          }
+        },
+        "H4chyk0's MAXIMUM": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:static limit: holds=53": 1
+          }
+        },
+        "HARD": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "HD Lv.11": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "HD Lv.9": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Hard": {
+          "attempted": 32,
+          "accepted": 30,
+          "accept_rate": 0.9375,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=34": 1
+          }
+        },
+        "Hard // Gloominess": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "He's returning with bags of Wabaloobunga...": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: G=151": 1,
+            "SkipExample:static limit: G=148": 1,
+            "SkipExample:static limit: G=152": 1
+          }
+        },
+        "Hodgepodge": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=48": 1
+          }
+        },
+        "Hoshizora": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=113": 1,
+            "SkipExample:static limit: holds=60": 1
+          }
+        },
+        "Hyper Slop": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN": {
+          "attempted": 32,
+          "accepted": 31,
+          "accept_rate": 0.96875,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=36": 1
+          }
+        },
+        "IN  Lv.12": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.13": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.14": {
+          "attempted": 12,
+          "accepted": 12,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.15": {
+          "attempted": 24,
+          "accepted": 23,
+          "accept_rate": 0.95833,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=72": 1
+          }
+        },
+        "IN  Lv.15.1": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN  Lv.16": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN 14": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN 8": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.11": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.12": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.13": {
+          "attempted": 40,
+          "accepted": 39,
+          "accept_rate": 0.975,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=33": 1
+          }
+        },
+        "IN Lv.14": {
+          "attempted": 100,
+          "accepted": 100,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.15": {
+          "attempted": 100,
+          "accepted": 98,
+          "accept_rate": 0.98,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=37": 1,
+            "SkipExample:static limit: holds=64": 1
+          }
+        },
+        "IN Lv.16": {
+          "attempted": 16,
+          "accepted": 14,
+          "accept_rate": 0.875,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=38": 1,
+            "SkipExample:static limit: holds=70": 1
+          }
+        },
+        "IN Lv.16.0": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.16.2": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN Lv.17": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 1,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=39": 1,
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "IN lv14": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN.15": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IN.Lv.14": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "IcyBath's Secret": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: K=327": 1
+          }
+        },
+        "Ihram's Easy": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Insane": {
+          "attempted": 12,
+          "accepted": 11,
+          "accept_rate": 0.91667,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=42": 1
+          }
+        },
+        "InterStellar": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 1,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: K=296": 1,
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Intermediate": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Ja wciaz wracam po wiecej": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Justice": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: G=132": 1
+          }
+        },
+        "Keilann's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "LN Aurora Australis": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: G=133,holds=153": 1,
+            "SkipExample:static limit: holds=169": 2,
+            "SkipExample:static limit: holds=60": 1
+          }
+        },
+        "LN Extra": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=64": 1,
+            "SkipExample:static limit: holds=117": 1,
+            "SkipExample:static limit: holds=100": 1,
+            "SkipExample:static limit: holds=113": 1
+          }
+        },
+        "Leggendaria": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Long Distance [3200m]": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Lv.5": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Majestic Presence": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=128": 1,
+            "SkipExample:static limit: holds=74": 1,
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:static limit: holds=72": 1
+          }
+        },
+        "Midnight Blue // Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Misattunement": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "core": 2
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 2
+          }
+        },
+        "Mono's DEATH": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Mono's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Murumoo's Hyper": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NM": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NORMAL": {
+          "attempted": 8,
+          "accepted": 8,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NORMAL!": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "NOVICE": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Nakazawa's Hard": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=34": 1
+          }
+        },
+        "Normal": {
+          "attempted": 56,
+          "accepted": 56,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Normal!": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Novice || Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Num's 4K Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "P45ta's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "PLAY TRAILS": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: G=193": 1,
+            "SkipExample:static limit: G=161": 1
+          }
+        },
+        "PRESENT": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Parallel Universe": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: K=305": 1,
+            "SkipExample:static limit: G=151": 1
+          }
+        },
+        "PolyGera's Lunatic": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Predetermination": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=127": 1,
+            "SkipExample:static limit: holds=116": 1,
+            "SkipExample:static limit: holds=102": 1,
+            "SkipExample:static limit: holds=79": 1
+          }
+        },
+        "Princess Knight": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=34": 1,
+            "SkipExample:static limit: holds=85": 1,
+            "SkipExample:static limit: holds=125": 1
+          }
+        },
+        "RC Aurora Borealis": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: K=268": 1
+          }
+        },
+        "Reaching the Top": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Regret": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Rem's ADVANCED": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "SC": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=41": 1
+          }
+        },
+        "SVvii": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "request": 4
+          },
+          "reasons": {
+            "ValueError:osu:L889 outside audio duration": 4
+          }
+        },
+        "Sigrdrifumal // Kilotek vs. Domajnyk Pear": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: G=200": 1
+          }
+        },
+        "Spooky Carnival": {
+          "attempted": 4,
+          "accepted": 0,
+          "accept_rate": 0.0,
+          "reject_stages": {
+            "bounds": 4
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=126": 1,
+            "SkipExample:static limit: holds=97": 1,
+            "SkipExample:static limit: holds=78": 1,
+            "SkipExample:static limit: holds=39": 1
+          }
+        },
+        "Spy x S.Star's Hyper": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Summer Memories": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Sya's Normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "T9JILECTb | Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Till November Night (reprise)": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "Touru's MAXIMUM": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=35": 1,
+            "SkipExample:static limit: holds=57": 1
+          }
+        },
+        "Ultra": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Wonki's MAXIMUM": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "Yes, Indeed": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 2,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: G=214": 1,
+            "SkipExample:reference evidence exceeds bound": 1,
+            "SkipExample:static limit: G=148": 1
+          }
+        },
+        "You Are My Treasure": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "[H | SV] DRATER's MAKE IT FLUFFY NOW": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "a normal end": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "advanced": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "aqua's Another": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=88": 1,
+            "SkipExample:static limit: holds=43": 1,
+            "SkipExample:static limit: holds=73": 1
+          }
+        },
+        "crystal chamber combustion": {
+          "attempted": 4,
+          "accepted": 1,
+          "accept_rate": 0.25,
+          "reject_stages": {
+            "bounds": 3
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=70": 1,
+            "SkipExample:static limit: holds=125": 1,
+            "SkipExample:static limit: holds=165": 1
+          }
+        },
+        "earth-scorching": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 1,
+            "core": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=101": 1,
+            "SkipExample:reference evidence exceeds bound": 1
+          }
+        },
+        "easy": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "em2's expert": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "hexe's Hard": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "insane": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "let your colours bloom": {
+          "attempted": 4,
+          "accepted": 3,
+          "accept_rate": 0.75,
+          "reject_stages": {
+            "bounds": 1
+          },
+          "reasons": {
+            "SkipExample:static limit: holds=33": 1
+          }
+        },
+        "mint's Extreme": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: G=139": 1,
+            "SkipExample:static limit: G=142": 1
+          }
+        },
+        "mourning": {
+          "attempted": 4,
+          "accepted": 2,
+          "accept_rate": 0.5,
+          "reject_stages": {
+            "bounds": 2
+          },
+          "reasons": {
+            "SkipExample:static limit: G=169": 1,
+            "SkipExample:static limit: G=168": 1
+          }
+        },
+        "netzoid's Hard // Out of Control": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "normal": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "qqq's Hyper": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "roxie's nothingless": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "snapshot lifespan": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "t h e  f i r s t  n o t e ~BadDragon~": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        },
+        "victorica's HARD": {
+          "attempted": 4,
+          "accepted": 4,
+          "accept_rate": 1.0,
+          "reject_stages": {},
+          "reasons": {}
+        }
+      }
+    },
+    "batches": 35,
+    "collate_rejected_batches": 0,
+    "attempted": 1260,
+    "accepted": 1097,
+    "collated": 1097
+  },
+  "manifest_charts": 24048,
+  "train_candidates": 16270,
+  "candidate_songs": 6986
+}

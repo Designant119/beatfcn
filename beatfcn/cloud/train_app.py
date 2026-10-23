@@ -55,6 +55,11 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
             t_w = time.time()
             Dt, quant = corpus.tap_dim, corpus.quant
             first = True
+            attempted = {}
+            def record_attempt(trace):
+                key = f"{trace['mode']}:{trace['stage']}:{trace.get('reason', 'ok')}"
+                attempted[key] = attempted.get(key, 0) + 1
+            smp.audit = record_attempt
             while True:
                 items = []
                 while len(items) < micro_batch:  # 4 cores per song bucket -> 2+ songs per microbatch
@@ -71,6 +76,8 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
                 if first:  # one line per worker in the container log: where start-up time went
                     print(json.dumps({'worker': wid, 'first_batch_s': round(time.time() - t_w, 1), 'skipped': dict(smp.skipped)}), flush=True)
                     first = False
+                bt['_provenance'] = [a.provenance for a, _ in items]
+                bt['_sampling_audit'] = {'worker': wid, 'attempts': dict(attempted)}
                 yield bt, dict(smp.skipped)
     return Stream()
 
@@ -167,12 +174,14 @@ def _cached_songs(taps_key: str) -> set:
     return set(have)
 
 
-def _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file):
+def _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file, manifest_name='charts.jsonl'):
     """Manifest rows usable with this cache, split into train / val as train() sees them."""
     from beatfcn.train.data import Corpus, load_manifest
     have = _cached_songs(taps_key)
     probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
-    rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have]
+    from beatfcn.ingest.offset import DECISION_VERSION
+    from beatfcn.train.audit import fingerprint
+    rows = [r for r in load_manifest(DATA, require_offset_version=DECISION_VERSION, manifest_name=manifest_name) if r['audio_sha256'] in have]
     n0 = len(rows)
     rows = [r for r in rows if probe.usable(r)]
     train_rows = [r for r in rows if r['split'] == 'train']
@@ -186,7 +195,10 @@ def _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_s
     if val_songs_file:  # fixed validation songs so runs with different caches stay comparable
         vallow = set(open(val_songs_file).read().split())
         val_rows = [r for r in val_rows if r['audio_sha256'] in vallow]
-    info = {'dup_collapsed_charts': sum(1 for r in rows if not r.get('kept')), 'dup_ineligible_dropped': n0 - len(rows)}
+    if not train_rows or not val_rows:
+        raise ValueError('corrected data selection needs nonempty train and validation rows')
+    info = {'dup_collapsed_charts': sum(1 for r in rows if not r.get('kept')), 'dup_ineligible_dropped': n0 - len(rows),
+            'rows_sha256': fingerprint(train_rows + val_rows), 'offset_decision_version': DECISION_VERSION}
     return train_rows, val_rows, info
 
 
@@ -197,7 +209,7 @@ def _prep_key(**kw):
 
 @app.function(image=image, volumes={DATA: data}, cpu=8.0, memory=32768, timeout=3600)
 def prep_train(taps_key: str, taps: tuple, pca: str = '', whiten: bool = False, songs_file: str = '', max_train_songs: int = 0,
-               val_songs_file: str = '', val_cores: int = 256, audit: bool = True):
+               val_songs_file: str = '', val_cores: int = 256, audit: bool = True, manifest_name: str = 'charts.jsonl'):
     """CPU-only start-up work for train(): the fixed validation cores and the counterfactual pair audit,
     saved under /data/prep/<key>.pt. train() loads them, so the GPU container starts stepping within
     seconds instead of idling ~2 minutes (measured: 68 s val build + 54 s audit) per launch."""
@@ -205,15 +217,18 @@ def prep_train(taps_key: str, taps: tuple, pca: str = '', whiten: bool = False, 
     from beatfcn.train.data import Corpus
     from beatfcn.train.loop import CoreSampler
     t0 = time.time()
+    train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file, manifest_name)
     key = _prep_key(taps_key=taps_key, taps=list(taps), pca=pca, whiten=whiten, songs_file=songs_file,
-                    max_train_songs=max_train_songs, val_songs_file=val_songs_file, val_cores=val_cores, audit=audit)
+                    max_train_songs=max_train_songs, val_songs_file=val_songs_file, val_cores=val_cores, audit=audit,
+                    rows_sha256=info['rows_sha256'])
     path = f'{DATA}/prep/{key}.pt'
     if os.path.exists(path):
         return {'key': key, 'cached': True}
-    train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file)
     corpus = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
     vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
     val = vsmp.fixed(val_cores, 20261022)
+    if len(val) != val_cores or not val:
+        raise ValueError(f'validation preparation produced {len(val)} of {val_cores} requested cores')
     t_val = time.time() - t0
     corpus.train_rows(train_rows)  # registers the train charts the audit loads
     aud = _pair_audit(train_rows, corpus) if audit else None
@@ -232,7 +247,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
           device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = '',
-          pool_songs: int = 160, prefetch: int = 6, graph: bool = False):
+          pool_songs: int = 160, prefetch: int = 6, graph: bool = False, manifest_name: str = 'charts.jsonl'):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
@@ -245,6 +260,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
 
     graph: one fixed batch shape (batch.STATIC) and the whole optimiser step replayed as a CUDA graph
     (train.graph.GraphedStep); accumulation must be 1."""
+    function_started = time.perf_counter()
     import numpy as np
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
@@ -268,11 +284,21 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     runs = [Run(run_id, variant)] + [Run(a['run_id'], a.get('variant')) for a in (also or [])]
     log_all = lambda rec: [r.log(dict(rec)) for r in runs]
 
-    train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file)
+    train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file, manifest_name)
     dup_rows = info['dup_collapsed_charts']
     need_audit = any(bool((v or {}).get('selection')) for v in [variant] + [a.get('variant') for a in (also or [])])
     prep_path = f'{DATA}/prep/{prep}.pt' if prep else ''
     prepped = torch.load(prep_path, weights_only=False) if prep_path and os.path.exists(prep_path) else None
+    if prepped is not None and prepped.get('info', {}).get('rows_sha256') != info['rows_sha256']:
+        raise RuntimeError(f'prep {prep} was built for a different row selection')
+    if prepped is not None and (len(prepped.get('val', [])) != val_cores or val_cores <= 0):
+        raise RuntimeError(f'prep {prep} has an incomplete validation set')
+    for r in runs:
+        if os.path.exists(f'{r.dir}/last.pt'):
+            previous = torch.load(f'{r.dir}/last.pt', map_location='cpu', weights_only=False)
+            if previous.get('rows_sha256') != info['rows_sha256']:
+                raise RuntimeError('checkpoint data identity differs: use a new run id for the corrected baseline')
+            del previous
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca, 'whiten': whiten}
     tc = TrainConfig(steps=steps, micro_batch=micro_batch, accumulation=accumulation, lr=lr, warmup=warmup,
                      validate_every=validate_every, val_cores=val_cores)
@@ -293,6 +319,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     from beatfcn.train.pool import SongPool
     pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs)
     raw_it, queue = iter(stream), deque()
+    worker_audits = {}
+    samples_file = open(f'{runs[0].dir}/samples.jsonl', 'a')
 
     def next_batch():
         """Prefetch `prefetch` metadata batches so their songs load in the background, then attach audio
@@ -302,9 +330,13 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             pool.request(b['_audio']['keys'])
             queue.append((b, sk))
         b, sk = queue.popleft()
+        audit = b.pop('_sampling_audit', {})
+        if audit:
+            worker_audits[audit['worker']] = audit['attempts']
         keys = list(b['_audio']['keys'])
         attach_audio(b, pool.get, device, corpus.scale if corpus.quant else None)
         pool.release(keys)
+        samples_file.write(json.dumps(b.pop('_provenance', [])) + '\n')
         return b, sk
 
     class _It:
@@ -313,8 +345,6 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     it = _It()
     t0 = time.time()
     if prepped is not None:
-        if prepped['n_train'] != len(train_rows) or prepped['n_val'] != len(val_rows):
-            raise RuntimeError(f'prep {prep} was built for a different row selection')
         val, val_build_s = prepped['val'], 0.0
     else:
         vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
@@ -324,6 +354,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
              'val_charts': len(val_rows), 'val_cores': len(val), 'val_build_s': val_build_s, 'prep': prep or None,
              'dup_collapsed_charts': dup_rows, 'dup_ineligible_dropped': info['dup_ineligible_dropped'],
              'paired_runs': [r.id for r in runs], 'modes': {m: sum(r['mode'] == m for r in train_rows) for m in ('mania_4k', 'phira')}})
+    log_all({'event': 'data_identity', **info, 'samples_file': f'{runs[0].dir}/samples.jsonl'})
     dev = torch.device(device)
     cuda = dev.type == 'cuda'
     for r in runs:
@@ -338,6 +369,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                'gpu': torch.cuda.get_device_name() if cuda else device})
         if os.path.exists(f'{r.dir}/last.pt'):  # resume after preemption / restart (same run id)
             ck = torch.load(f'{r.dir}/last.pt', map_location=dev, weights_only=False)
+            if ck.get('rows_sha256') != info['rows_sha256']:
+                raise RuntimeError('checkpoint data identity differs: use a new run id for the corrected baseline')
             r.model.load_state_dict(ck['model'])
             r.opt.load_state_dict(ck['opt'])
             r.start, r.best = ck['step'], ck.get('best')
@@ -362,9 +395,10 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     end = min(stop_at, tc.steps) if stop_at else tc.steps
 
     def checkpoint(step):
+        samples_file.flush()
         for r in runs:
             torch.save({'model': r.model.state_dict(), 'opt': r.opt.state_dict(), 'config': asdict(r.mc), 'data': corpus_args,
-                        'step': step, 'best': r.best}, f'{r.dir}/last.pt.tmp')
+                        'step': step, 'best': r.best, 'rows_sha256': info['rows_sha256'], 'manifest_name': manifest_name}, f'{r.dir}/last.pt.tmp')
             os.replace(f'{r.dir}/last.pt.tmp', f'{r.dir}/last.pt')
         data.commit()
     def cf_step(step):
@@ -424,12 +458,13 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                 r.opt.step()
                 r.opt.zero_grad(set_to_none=True)
         if (step + 1) % tc.log_every == 0:
+            samples_file.flush()
             shared = {'step': step + 1, 'lr': lr_at(step, tc), 'examples': examples, 'data_wait_s': round(wait_s, 1),
                       'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
                       'pool': {k: (round(v, 1) if isinstance(v, float) else v) for k, v in pool.stats.items()},
                       'pool_gb': round(pool.resident_bytes() / 1e9, 2),
                       'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2) if cuda else None,
-                      'gpu_util': mon.take()['util_mean'], 'skipped': skipped}
+                      'gpu_util': mon.take()['util_mean'], 'skipped': skipped, 'sampling_audit_by_worker': worker_audits}
             for r in runs:
                 r.log({'event': 'train', **shared, 'grad_norm': float(r.gn), 'fields': summarize(r.acc)})
                 r.acc = {}
@@ -446,10 +481,13 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                 if r.best is None or v['total'] < r.best:
                     r.best = v['total']
                     torch.save({'model': r.model.state_dict(), 'config': asdict(r.mc), 'data': corpus_args, 'step': step + 1,
-                                'val': v}, f'{r.dir}/best.pt')
+                                'val': v, 'rows_sha256': info['rows_sha256'], 'manifest_name': manifest_name}, f'{r.dir}/best.pt')
             checkpoint(step + 1)
+    samples_file.close()
     data.commit()
     return {'runs': {r.id: r.best for r in runs}, 'elapsed_s': round(time.time() - t0, 1), 'examples': examples,
+            'function_wall_s': time.perf_counter() - function_started,
+            'timing_scope': 'function entry through final Volume commit; includes setup, data wait and validation; excludes container startup/teardown',
             'aborted': aborted}
 
 
@@ -552,20 +590,26 @@ def eval_generation(run_id: str, n_cores: int = 200, taps_key: str = 'v1_L8-16-2
     rng = np.random.default_rng(seed)
     tol = (10_000, 20_000, 50_000)
     agg = collections.defaultdict(lambda: collections.Counter())
-    t0, done, illegal = time.time(), 0, 0
-    while done < n_cores:
+    from beatfcn.model.evaluation import groups_to_events, legality_issues, score_events
+    detailed, rejected = [], collections.Counter()
+    t0, done, illegal, attempts = time.time(), 0, 0, 0
+    while done < n_cores and attempts < 50 * n_cores:
+        attempts += 1
         row = trows[rng.integers(len(trows))]
         try:
             chart = corpus.chart(row['chart_id'])
             s = sample_request(chart, seed=int(rng.integers(2 ** 31)), audio_id=row['song'], audio_duration_us=row['duration_us'])
             if not s.ok:
+                rejected['model_view_quarantine'] += 1
                 continue
             c0 = F.choose_core(s, np.random.default_rng(done), row['duration_us'])
             li = F.line_index_of(chart.events)
             ex = F.build_core(s, chart.events, c0, row['duration_us'], line_index=li)
             if F.check_targets(ex):
+                rejected['illegal_targets'] += 1
                 continue
-        except (F.SkipExample, ValueError, AssertionError):
+        except (F.SkipExample, ValueError, AssertionError) as exc:
+            rejected[f'{type(exc).__name__}:{exc}'] += 1
             continue
         song = corpus.song(row['song'])
         holds, runs, heads = core_context(s, ex, li)
@@ -600,7 +644,15 @@ def eval_generation(run_id: str, n_cores: int = 200, taps_key: str = 'v1_L8-16-2
                 if mode == 'mania_4k':
                     a['lanes_equal'] += sorted(n['lane'] for n in tg['notes']) == sorted(n['lane'] for n in g['notes'])
                 a['types_equal'] += sorted(n['type'] for n in tg['notes']) == sorted(n['type'] for n in g['notes'])
-        illegal += 0  # generation is mask-constrained; independent validator lands with runtime/constraints
+        additions = groups_to_events(gen, c0, mode, li, placement=cfg.phira_location)
+        truth = groups_to_events(ex.groups, c0, mode, li, id_prefix='truth', placement=cfg.phira_location)
+        # Local-core evaluation assumes its past ground truth exists; legality must check against that context too.
+        previous = [e.to_json() for e in s.hidden if e.onset_us < c0]
+        req = {**s.request, 'observed_events': s.request['observed_events'] + previous}
+        issues = legality_issues(req, additions, placement=cfg.phira_location)
+        illegal += bool(issues)
+        detailed.append({'chart_id': row['chart_id'], 'c0_us': c0, 'mode': mode,
+                         'scores': score_events(additions, truth, mode), 'legality': issues})
         done += 1
     out = {'run': run_id, 'step': ck['step'], 'cores': done, 'greedy': greedy, 'seconds': round(time.time() - t0, 1)}
     for mode, a in agg.items():
@@ -620,6 +672,8 @@ def eval_generation(run_id: str, n_cores: int = 200, taps_key: str = 'v1_L8-16-2
                      'group_type_acc': round(a['types_equal'] / max(a['groups_matched'], 1), 4),
                      'group_lane_acc': round(a['lanes_equal'] / max(a['groups_matched'], 1), 4) if mode == 'mania_4k' else None}
     out['split'] = split
+    out.update(protocol='local_core_with_ground_truth_past', attempts=attempts, rejected=dict(rejected),
+               illegal_cores=illegal, completed_requested=done == n_cores, details=detailed)
     with open(f'{DATA}/runs/{run_id}/eval_generation_{split}{"_greedy" if greedy else ""}.json', 'w') as fo:
         json.dump(out, fo, indent=1)
     data.commit()
@@ -632,6 +686,43 @@ def evaluate(run_id: str, n_cores: int = 200, greedy: bool = False, taps_key: st
     r = eval_generation.remote(run_id, n_cores=n_cores, greedy=greedy, taps_key=taps_key, split=split, pca=pca)
     Path(f'reports/eval_{run_id}_{split}{"_greedy" if greedy else ""}.json').write_text(json.dumps(r, indent=1))
     print(json.dumps(r, indent=1))
+
+
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=4.0, memory=32768, timeout=4 * 3600)
+def eval_whole_songs(run_id: str, n_songs: int = 20, seed: int = 20261023, split: str = 'val'):
+    """Full sequential generation from a corrected-baseline checkpoint; no oracle density controls."""
+    function_started = time.perf_counter()
+    import torch
+    from beatfcn.model.p1 import P1Config, P1Model
+    from beatfcn.model.evaluation import evaluate_songs
+    from beatfcn.train.data import Corpus, load_manifest
+    from beatfcn.ingest.offset import DECISION_VERSION
+    ck = torch.load(f'{DATA}/runs/{run_id}/best.pt', map_location='cuda', weights_only=False)
+    if not ck.get('rows_sha256'):
+        raise ValueError('checkpoint predates data identity tracking; establish a corrected baseline first')
+    cfg = P1Config(**{k: tuple(v) if isinstance(v, list) else v for k, v in ck['config'].items()})
+    model = P1Model(cfg).cuda().eval()
+    model.load_state_dict(ck['model'])
+    corpus = Corpus(**{**ck['data'], 'root': DATA})
+    have = _cached_songs(ck['data']['taps_key'])
+    rows = [r for r in load_manifest(DATA, split=split, require_offset_version=DECISION_VERSION,
+                                    manifest_name=ck.get('manifest_name', 'charts.jsonl')) if r['audio_sha256'] in have]
+    with torch.autocast('cuda', dtype=torch.bfloat16):
+        result = evaluate_songs(model, corpus, rows, n_songs, seed, 'cuda', True)
+    result.update(run=run_id, step=ck['step'], split=split, training_rows_sha256=ck['rows_sha256'])
+    with open(f'{DATA}/runs/{run_id}/eval_whole_{split}.json', 'w') as f:
+        json.dump(result, f, indent=1)
+    data.commit()
+    result['function_wall_s'] = time.perf_counter() - function_started
+    result['timing_scope'] = 'function entry through final Volume commit; excludes container startup/teardown'
+    return result
+
+
+@app.local_entrypoint()
+def evaluate_whole(run_id: str, n_songs: int = 20, seed: int = 20261023, split: str = 'val'):
+    result = eval_whole_songs.remote(run_id, n_songs, seed, split)
+    Path(f'reports/eval_whole_{run_id}_{split}.json').write_text(json.dumps(result, indent=1))
+    print(json.dumps(result['summary'], indent=1))
 
 
 weights_vol = modal.Volume.from_name('beatfcn-weights', create_if_missing=True)
@@ -787,7 +878,7 @@ def sweep(configs: str):
         if c.pop('prep', False):  # CPU-only start-up work first; the GPU container then starts stepping at once
             need_audit = any(bool((v or {}).get('selection')) for v in [c.get('variant')] + [a.get('variant') for a in c.get('also', [])])
             pk = {k: c.get(k, d) for k, d in (('pca', ''), ('whiten', False), ('songs_file', ''), ('max_train_songs', 0),
-                                              ('val_songs_file', ''), ('val_cores', 256))}
+                                              ('val_songs_file', ''), ('val_cores', 256), ('manifest_name', 'charts.jsonl'))}
             r = prep_train.remote(c['taps_key'], tuple(c['taps']), audit=need_audit, **pk)
             print(c['run_id'], 'prep', json.dumps(r)[:300])
             c['prep'] = r['key']
@@ -915,16 +1006,20 @@ def profile(n_batches: int = 12, pool: int = POOL):
 
 @app.function(image=image, volumes={DATA: data}, cpu=16.0, memory=65536, timeout=1800)
 def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24',
-                       n_batches: int = 12, workers: int = 14, out: str = 'bench/meta_static_v4.pt'):
+                       n_batches: int = 12, workers: int = 14, out: str = 'bench/meta_static_v4.pt',
+                       manifest_name: str = 'charts.jsonl', static: bool = True, micro_batch: int = 32):
     """CPU-only: metadata batches (static shape, no audio) from the real worker stream, saved for the GPU
     bench. Also reports the metadata path's sustained rate (cores/s with `workers` processes)."""
     import torch
     from beatfcn.model.batch import STATIC
     from beatfcn.train.data import load_manifest
     have = _cached_songs(taps_key)
-    rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
+    from beatfcn.train.audit import fingerprint
+    from beatfcn.ingest.offset import DECISION_VERSION
+    rows = [r for r in load_manifest(DATA, require_offset_version=DECISION_VERSION, manifest_name=manifest_name)
+            if r['audio_sha256'] in have and r['split'] == 'train']
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': tuple(taps), 'pca': pca}
-    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 3, 32, tuple(taps), max(taps), static=STATIC), batch_size=None,
+    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 3, micro_batch, tuple(taps), max(taps), static=STATIC if static else None), batch_size=None,
                                          num_workers=workers, prefetch_factor=2)
     it = iter(loader)
     t0 = time.time()
@@ -938,10 +1033,11 @@ def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 2
         print(json.dumps({'batch': i + 2, 'elapsed_s': round(time.time() - t1, 1), 'skipped': skipped}), flush=True)
     t2 = time.time()
     os.makedirs(os.path.dirname(f'{DATA}/{out}'), exist_ok=True)
-    torch.save({'batches': batches, 'taps': list(taps), 'taps_key': taps_key, 'pca': pca}, f'{DATA}/{out}')
+    torch.save({'batches': batches, 'taps': list(taps), 'taps_key': taps_key, 'pca': pca,
+                'rows_sha256': fingerprint(rows), 'manifest_name': manifest_name, 'static': static}, f'{DATA}/{out}')
     data.commit()
     songs = sorted({k for b in batches for k in b['_audio']['keys']})
-    stats = {'first_s': round(t1 - t0, 1), 'cores_per_s_after_first': round(32 * (n_batches - 1) / max(t2 - t1, 1e-6), 1),
+    stats = {'first_s': round(t1 - t0, 1), 'cores_per_s_after_first': round(micro_batch * (n_batches - 1) / max(t2 - t1, 1e-6), 1),
              'songs': len(songs), 'skipped': skipped, 'bytes_per_batch': sum(v.numel() * v.element_size() for v in first.values() if torch.is_tensor(v))}
     print(json.dumps(stats))
     return stats
@@ -1118,3 +1214,82 @@ def bench_gpu(gpus: str = 'L40S,H100,L4,A10', timeout: int = 600):
     calls = {g: bench_train_gpu.with_options(gpu=g, timeout=timeout).spawn() for g in gpus.split(',')}
     for g, c in calls.items():
         print(json.dumps(c.get(), indent=1))
+
+
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=4.0, memory=49152, timeout=600)
+def bench_corrected(batches: str = 'bench/meta_offset_v2_dynamic.pt', steps: int = 100, variant: dict | None = None,
+                    tag: str = 'baseline'):
+    """Resident-data training compute baseline, fixed real samples; not an end-to-end throughput claim."""
+    function_started = time.perf_counter()
+    if steps <= 0:
+        raise ValueError('benchmark steps must be positive')
+    import copy
+    import torch
+    from beatfcn.model.p1 import P1Config, P1Model
+    from beatfcn.model.batch import attach_audio
+    from beatfcn.train.pool import SongPool
+    from beatfcn.train.data import Corpus
+    from beatfcn.train.loop import to_device, merge, summarize
+    z = torch.load(f'{DATA}/{batches}', weights_only=False)
+    if not z.get('rows_sha256') or z.get('static') is not False:
+        raise ValueError('benchmark needs corrected, dynamic-eligibility metadata')
+    corpus = Corpus(DATA, z['taps_key'], tuple(z['taps']), pca=z['pca'])
+    metas = z['batches']
+    if not metas:
+        raise ValueError('benchmark has no input batches')
+    songs = sorted({s for b in metas for s in b['_audio']['keys']})
+    pool = SongPool(corpus.load_numpy, tuple(z['taps']), 'cuda', capacity=len(songs))
+    started = time.perf_counter()
+    pool.request(songs)
+    full = []
+    for meta in metas:
+        bt = copy.deepcopy(meta)
+        attach_audio(bt, pool.get, 'cuda', corpus.scale if corpus.quant else None)
+        full.append(to_device(bt, torch.device('cuda')))
+    torch.cuda.synchronize()
+    prepare_s = time.perf_counter() - started
+    torch.manual_seed(20261023)
+    cfg = P1Config(**{'taps':tuple(z['taps']), 'top_tap':max(z['taps']), 'dropout':0., **(variant or {})})
+    model = P1Model(cfg).cuda().train()
+    decay = [p for p in model.parameters() if p.ndim >= 2]
+    other = [p for p in model.parameters() if p.ndim < 2]
+    opt = torch.optim.AdamW([{'params':decay,'weight_decay':.01}, {'params':other,'weight_decay':0.}],
+                            lr=2e-4, betas=(.9,.95), fused=True)
+    def step(check=False):
+        opt.zero_grad(set_to_none=True)
+        acc = {}
+        for bt in full:
+            with torch.autocast('cuda', dtype=torch.bfloat16):
+                loss, met = model(dict(bt))
+            (loss / len(full)).backward()
+            if check:
+                merge(acc, met)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
+        opt.step()
+        if check:
+            return summarize(acc)  # checks illegal labels before any timing is accepted
+    initial_fields = step(check=True)
+    for _ in range(4):
+        step()
+    torch.cuda.synchronize()
+    torch.cuda.reset_peak_memory_stats()
+    started = time.perf_counter()
+    for _ in range(steps):
+        step()
+    torch.cuda.synchronize()
+    elapsed = time.perf_counter() - started
+    samples = sum(bt['mode'].shape[0] for bt in full)
+    result = {'schema':'beatfcn.corrected_compute_bench.v1', 'gpu':torch.cuda.get_device_name(),
+        'torch':torch.__version__, 'config':asdict(cfg), 'rows_sha256':z['rows_sha256'],
+        'sample_sequence':[b.get('_provenance',[]) for b in metas], 'steps':steps,
+        'effective_batch':samples, 'prepare_s':prepare_s, 'steady_s':elapsed,
+        'initial_fields':initial_fields,
+        'seconds_per_step':elapsed/steps, 'samples_per_second':samples*steps/elapsed,
+        'peak_allocated_bytes':torch.cuda.max_memory_allocated(),
+        'scope':'GPU training on resident fixed real batches; excludes data sampling/loading and validation'}
+    with open(f'{DATA}/bench/offset_v2_{tag}.json','w') as f:
+        json.dump(result,f,indent=1)
+    data.commit()
+    pool.pool.shutdown(wait=True)
+    result['function_wall_s'] = time.perf_counter() - function_started
+    return result

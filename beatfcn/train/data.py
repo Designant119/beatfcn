@@ -27,11 +27,15 @@ def dup_only(r) -> bool:
     return r.get('status') == 'parsed' and bool(reasons) and reasons <= DUP_REASONS
 
 
-def load_manifest(root=DATA, split=None, kept_only=True, select=True, dup_collapse=True):
+def load_manifest(root=DATA, split=None, kept_only=True, select=True, dup_collapse=True, require_offset_version=None,
+                  manifest_name='charts.jsonl'):
     rows = []
-    with open(os.path.join(root, 'manifest', 'charts.jsonl')) as f:
+    with open(os.path.join(root, 'manifest', manifest_name)) as f:
         for line in f:
             r = json.loads(line)
+            if require_offset_version is not None and r.get('status') == 'parsed':
+                if r.get('offset_decision', {}).get('decision_version', 1) != require_offset_version:
+                    raise ValueError('stale offset decisions: migrate the manifest before starting a new training baseline')
             if kept_only and not r.get('kept') and not (dup_collapse and dup_only(r)):
                 continue
             if split and r.get('split') != split:
