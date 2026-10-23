@@ -32,7 +32,8 @@ def _pick(logits, mask, rng, temperature, top_p, greedy):
 
 @torch.no_grad()
 def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs, observed_heads, *,
-                  temperature=0.8, top_p=0.95, greedy=False, seed=0, device='cpu', diagnostics=None, deadline=None):
+                  temperature=0.8, top_p=0.95, greedy=False, seed=0, device='cpu', diagnostics=None, deadline=None,
+                  incremental=True):
     """Returns generated groups in CoreExample.groups format (t_rel_us, notes[...])."""
     c = model.c
     rng = torch.Generator(device='cpu').manual_seed(seed)
@@ -43,6 +44,7 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
     t_prev = -1
     ended = False
     timed_out = False
+    cache = {} if incremental else None  # per-core K/V cache: later groups append one Y row instead of re-encoding
     for _ in range(FE.MAX_GROUPS):
         if deadline is not None and time.perf_counter() >= deadline:
             timed_out = True
@@ -51,13 +53,16 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
         times = [c0 - 1] + [c0 + g['t_rel_us'] for g in work.groups]
         work.right = np.array([_right(t, observed_heads, runs) for t in times], np.float32)
         bt = dequant({k: (v.to(device) if torch.is_tensor(v) else v) for k, v in collate([work], [song], c.taps, c.top_tap).items()})
-        h, pa, fi, _ = model.encode(bt)
+        G = len(work.groups)
+        if cache is None or not cache:
+            h, pa, fi, _ = model.encode(bt, cache)
+            hrow = h[:, G:G + 1]
+        else:
+            hrow, pa, fi, _ = model.encode_step(bt, cache)
         model._sel_core = None
         if model.c.selection:
             c0c = FE.HALO_US // FE.CELL_US
             model._sel_core = model.selection_field(pa[:, c0c:c0c + FE.CORE_US // FE.CELL_US], model._intent_h)
-        G = len(work.groups)
-        hrow = h[:, G:G + 1]
         logits, mask, ok = model.time_logits(bt, hrow, pa, fi, torch.tensor([[t_prev / 1e6 if t_prev >= 0 else -0.001]], device=device))
         k = _pick(logits[0, 0].cpu(), mask[0, 0].cpu(), rng, temperature, top_p, greedy)
         if k == 0:

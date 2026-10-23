@@ -90,22 +90,46 @@ class Layer(nn.Module):
         self.f1, self.f2 = nn.Linear(c.d, 2 * c.ffn, bias=False), nn.Linear(c.ffn, c.d, bias=False)
         self.drop = nn.Dropout(c.dropout)
 
-    def forward(self, x, taps_ln, audio_t, row_t, row_timed, mask):
-        c, (B, N, _) = self.c, x.shape
+    def audio_kv(self, taps_ln, audio_t):
+        """Rotated audio keys / values for this layer, expanded to every query head: [B,H,Na,hd] x 2."""
+        c, B = self.c, taps_ln.shape[0]
         hd = c.d // c.heads
-        z = self.n1(x)
-        q, k, v = (f(z).view(B, N, c.heads, hd).transpose(1, 2) for f in (self.q, self.k, self.v))
-        q, k = rope(q, row_t, row_timed), rope(k, row_t, row_timed)
         audio = torch.einsum('t,btnd->bnd', self.mix.softmax(0).to(taps_ln.dtype), taps_ln)
         Na = audio.shape[1]
         ka, va = (f(audio).view(B, Na, c.audio_kv_heads, hd).transpose(1, 2) for f in (self.ka, self.va))
         ka = rope(ka, audio_t, torch.ones_like(audio_t))
         rep = c.heads // c.audio_kv_heads
-        ka, va = ka.repeat_interleave(rep, 1), va.repeat_interleave(rep, 1)
-        att = F.scaled_dot_product_attention(q, torch.cat([ka, k], 2), torch.cat([va, v], 2), attn_mask=mask)
+        return ka.repeat_interleave(rep, 1), va.repeat_interleave(rep, 1)
+
+    def row_qkv(self, x, row_t, row_timed):
+        c, (B, N, _) = self.c, x.shape
+        hd = c.d // c.heads
+        z = self.n1(x)
+        q, k, v = (f(z).view(B, N, c.heads, hd).transpose(1, 2) for f in (self.q, self.k, self.v))
+        return rope(q, row_t, row_timed), rope(k, row_t, row_timed), v
+
+    def finish(self, x, att):
+        c, (B, N, _) = self.c, x.shape
         x = x + self.drop(self.o(att.transpose(1, 2).reshape(B, N, c.d)))
         a, b = self.f1(self.n2(x)).chunk(2, -1)
         return x + self.drop(self.f2(F.silu(a) * b))
+
+    def forward(self, x, taps_ln, audio_t, row_t, row_timed, mask, cache=None):
+        """cache (dict, inference): receives this layer's rotated audio K/V and row K/V for incremental decoding."""
+        q, k, v = self.row_qkv(x, row_t, row_timed)
+        ka, va = self.audio_kv(taps_ln, audio_t)
+        if cache is not None:
+            cache.update(ka=ka, va=va, k=k, v=v)
+        att = F.scaled_dot_product_attention(q, torch.cat([ka, k], 2), torch.cat([va, v], 2), attn_mask=mask)
+        return self.finish(x, att)
+
+    def forward_step(self, x_new, row_t, row_timed, mask_row, cache):
+        """One appended row [B,1,d] attending to the cached audio and rows (plus itself); extends the cache."""
+        q, k, v = self.row_qkv(x_new, row_t, row_timed)
+        cache['k'], cache['v'] = torch.cat([cache['k'], k], 2), torch.cat([cache['v'], v], 2)
+        att = F.scaled_dot_product_attention(q, torch.cat([cache['ka'], cache['k']], 2), torch.cat([cache['va'], cache['v']], 2),
+                                             attn_mask=mask_row)
+        return self.finish(x_new, att)
 
     def forward_packed(self, x, taps_ln, audio_t, row_t, row_timed, block_mask):
         """x [1, N, d]: the valid rows of every core, core after core; audio memory stays per core [B, T, Na, Dt]
@@ -466,12 +490,17 @@ class P1Model(nn.Module):
                                         BLOCK_SIZE=block, mask_mod=mask_mod, seq_lengths=(N, BNa + N))
 
     # ------------------------------------------------------------ forward
-    def encode(self, bt):
-        """Transformer over all rows; returns Y hidden states [B, G+1, d] and pointer features."""
+    def encode(self, bt, cache=None):
+        """Transformer over all rows; returns Y hidden states [B, G+1, d] and pointer features.
+        cache (dict): filled for incremental decoding (encode_step appends Y rows without re-encoding)."""
         from .batch import dequant
         dequant(bt)  # in place, no-op when to_device already expanded the compact transport format
         c = self.c
         B = bt['mode'].shape[0]
+        if cache is not None:
+            if c.packed or c.readout == 'design_package':
+                raise ValueError('incremental decoding supports the padded multitap read-out only')
+            cache['layers'] = [{} for _ in self.layers]
         taps = torch.stack([ln(bt['audio'][:, j]) for j, ln in enumerate(self.tap_ln)], 1)  # [B,T,400,8,Dt]
         taps = taps + self.band
         per_cell = 8
@@ -497,8 +526,8 @@ class P1Model(nn.Module):
             hn = self._encode_packed(bt, x, taps, audio_t, row_t, row_timed, lens, valid + [vy], per_cell)
         else:
             mask = self._mask(bt, lens, times + [ty], valid + [vy], Y.shape[1], per_cell)
-            for layer in self.layers:
-                x = layer(x, taps, audio_t, row_t, row_timed, mask)
+            for i, layer in enumerate(self.layers):
+                x = layer(x, taps, audio_t, row_t, row_timed, mask, None if cache is None else cache['layers'][i])
             hn = self.norm(x)
         h = hn[:, sum(lens):]
         if c.readout == 'design_package':
@@ -509,7 +538,49 @@ class P1Model(nn.Module):
         if not c.fine_branch:
             fine = torch.zeros_like(fine)
         self._intent_h = hn[:, lens[0]:lens[0] + lens[1]]  # I rows (read R/I only)
+        if cache is not None:  # rows in the cache: prefix + the (padded) Y block; appended rows follow
+            cache.update(lens=lens, rows_valid=torch.cat(valid + [vy], 1), n_valid_y=int(vy.sum()), appended=0,
+                         audio_valid=bt['audio_valid'], per_cell=per_cell, ptr_audio=ptr_audio, fine=fine, ty=ty,
+                         intent_h=self._intent_h)
         return h, ptr_audio, fine, ty
+
+    def encode_step(self, bt, cache):
+        """Incremental decoding: `bt` holds G generated groups (collated as during generation) and the cache
+        holds Y rows 0..G-1 (BOS + G-1 groups) with every prefix row and the audio. Computes Y row G (the one
+        that predicts group G) through all layers against the cache, appends it, and returns its hidden state
+        [B,1,d] with the per-core pointer features. Equals encode(bt)[0][:, G:G+1] (same math, no re-encode)."""
+        c = self.c
+        B = bt['mode'].shape[0]
+        dev = bt['mode'].device
+        if B != 1:
+            raise ValueError('incremental decoding is per core (batch of one)')
+        Y, ty, vy = self._y_rows(bt, self.group_embedding(bt))
+        G = int(bt['grp_valid'].sum())  # valid groups (the Y block itself is padded to a bucket)
+        if cache['n_valid_y'] == G + 1:  # row G was already computed for a time that produced no note: recompute it
+            for lc in cache['layers']:
+                lc['k'], lc['v'] = lc['k'][:, :, :-1], lc['v'][:, :, :-1]
+            cache['n_valid_y'] -= 1
+            cache['appended'] -= 1
+        if cache['n_valid_y'] != G:
+            raise ValueError(f'cache holds {cache["n_valid_y"]} Y rows, batch has {G} groups: rows are appended one at a time')
+        x = Y[:, G:G + 1]  # the row that predicts group G: BOS for G == 0, else the embedding of group G - 1
+        t_row, timed = ty[:, G:G + 1], torch.ones(B, 1, device=dev)
+        # mask for this Y row: audio window (kind 5); valid cached rows (prefix, BOS, earlier appended rows); itself
+        prefix_ok = torch.cat([cache['rows_valid'], torch.ones(B, cache['appended'], dtype=torch.bool, device=dev)], 1)
+        own = torch.ones(B, 1, dtype=torch.bool, device=dev)
+        cell_t = (torch.arange(FE.LOCAL_CELLS, device=dev) + 0.5) * FE.CELL_US / FE.SEC - FE.HALO_US / FE.SEC
+        dt = cell_t[None] - t_row  # [B,400]
+        (w0, w1) = c.y_window
+        win = ((dt >= w0) & (dt < w1)) if c.audio_window else torch.ones_like(dt, dtype=torch.bool)
+        win = win & cache['audio_valid']
+        win = win[..., None].expand(-1, -1, cache['per_cell']).reshape(B, -1)
+        mask = torch.cat([win, prefix_ok, own], 1)[:, None, None]  # [B,1,1,Na+n_old+1]
+        for i, layer in enumerate(self.layers):
+            x = layer.forward_step(x, t_row, timed, mask, cache['layers'][i])
+        cache['n_valid_y'] = G + 1
+        cache['appended'] += 1
+        self._intent_h = cache['intent_h']
+        return self.norm(x), cache['ptr_audio'], cache['fine'], ty
 
     def time_logits(self, bt, h, ptr_audio, fine, t_prev):
         """Pointer over [END | 800 bins | A anchors] for each Y row; returns logits and legality mask."""

@@ -1,3 +1,4 @@
+import dataclasses
 import unittest
 import numpy as np
 import torch
@@ -46,3 +47,66 @@ class SampleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class IncrementalDecodingTests(unittest.TestCase):
+    """encode_step (K/V cache) must reproduce the full re-encode row by row, and greedy generation must match."""
+
+    def _example(self):
+        import numpy as np
+        from beatfcn.events.requests import build_request
+        from beatfcn.model import features as F
+        from test_p1_model import song as mk_song
+        from events_helpers import synthetic_mania, DURATION
+        chart = synthetic_mania(2)
+        for k in range(40):
+            try:
+                s = build_request(chart, kind='from_scratch', seed=300 + k, audio_id='a', audio_duration_us=DURATION)
+                ex = F.build_core(s, chart.events, F.choose_core(s, np.random.default_rng(k), DURATION), DURATION)
+                if len(ex.groups) >= 4:
+                    return ex, mk_song(1), s
+            except (ValueError, AssertionError):
+                continue
+        self.fail('no example with >= 4 groups')
+
+    def test_encode_step_matches_full_encode_rows(self):
+        import copy
+        import numpy as np
+        from beatfcn.model.batch import collate, dequant
+        from beatfcn.model.p1 import P1Model
+        from test_p1_model import CFG
+        ex, song, _ = self._example()
+        torch.manual_seed(0)
+        m = P1Model(dataclasses.replace(CFG, dropout=0.0, selection=True)).eval()
+        full_bt = dequant(collate([ex], [song], CFG.taps, CFG.top_tap))
+        with torch.no_grad():
+            h_full, pa_full, fi_full, _ = m.encode(full_bt)
+            intent_full = m._intent_h.clone()
+            cache = {}
+            for k in range(4):
+                work = copy.copy(ex)
+                work.groups = ex.groups[:k]
+                work.right = ex.right[:k + 1]
+                bt = dequant(collate([work], [song], CFG.taps, CFG.top_tap))
+                if k == 0:
+                    h, pa, fi, _ = m.encode(bt, cache)
+                    row = h[:, 0:1]
+                else:
+                    row, pa, fi, _ = m.encode_step(bt, cache)
+                self.assertTrue(torch.allclose(row, h_full[:, k:k + 1], atol=2e-5), f'row {k}')
+            self.assertTrue(torch.allclose(pa, pa_full, atol=1e-6))
+            self.assertTrue(torch.allclose(m._intent_h, intent_full, atol=1e-6))
+
+    def test_greedy_generation_identical_with_cache(self):
+        from beatfcn.model.p1 import P1Model
+        from beatfcn.model.sample import generate_core, core_context
+        from test_p1_model import CFG
+        ex, song, s = self._example()
+        torch.manual_seed(0)
+        m = P1Model(dataclasses.replace(CFG, dropout=0.0)).eval()
+        holds, runs, heads = core_context(s, ex, {})
+        a = generate_core(m, ex, song, holds, runs, heads, greedy=True, seed=1, incremental=False)
+        b = generate_core(m, ex, song, holds, runs, heads, greedy=True, seed=1, incremental=True)
+        self.assertEqual([(g['t_rel_us'], [(n['type'], n['lane']) for n in g['notes']]) for g in a],
+                         [(g['t_rel_us'], [(n['type'], n['lane']) for n in g['notes']]) for g in b])
+        self.assertGreater(len(a), 0)

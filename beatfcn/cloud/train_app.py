@@ -304,6 +304,9 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                      validate_every=validate_every, val_cores=val_cores)
     corpus = Corpus(**corpus_args)
     # the training stream starts first: its workers warm up while validation cores are built
+    resume_step = 0
+    if os.path.exists(f'{runs[0].dir}/last.pt'):  # resumed runs must not replay the sample sequence from step 0
+        resume_step = int(torch.load(f'{runs[0].dir}/last.pt', map_location='cpu', weights_only=False)['step'])
     stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed + 7919 * resume_step, micro_batch, tuple(taps),
                                                  max(taps), static=None),  # graphs pad per shape tier: no static filtering
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
