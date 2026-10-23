@@ -246,7 +246,7 @@ def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16, pca: 
     import torch
     from beatfcn.audio import memory as M
     t0, done, windows = time.time(), 0, 0
-    enc = load_encoder()
+    enc = None  # loaded on the first song that still needs encoding (re-runs over finished chunks stay cheap)
     pad = M.silence_row()
     want = sorted(set(layers) | {20})
     proj = {}
@@ -259,6 +259,8 @@ def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 16, pca: 
         if all(os.path.exists(f'{base}/L{l}.npy') for l in layers) and os.path.exists(f'{base}/S20.npy'):
             continue
         mel = np.load(f'{DATA}/mel10/{sha}.npy').astype(np.float32)
+        if enc is None:
+            enc = load_encoder()
         taps = M.encode_song(enc, mel, want, batch=batch, pad_row=pad)
         os.makedirs(base, exist_ok=True)
         for l in layers:

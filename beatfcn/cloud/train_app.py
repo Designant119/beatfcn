@@ -573,9 +573,14 @@ def s2(run_id: str, init_run: str, steps: int = 3000):
 @app.local_entrypoint()
 def sweep(configs: str):
     """Several training runs inside ONE app (avoids the app-create rate limit). configs: JSON list of
-    {"run_id": ..., **train kwargs}; variant may be a dict."""
+    {"run_id": ..., **train kwargs}; variant may be a dict. Optional "resources": {"gpu", "cpu", "memory"}
+    overrides the container shape (cost-first runs use fewer CPUs / cheaper GPUs)."""
     cfgs = json.loads(Path(configs).read_text()) if configs.endswith('.json') else json.loads(configs)
-    calls = [(c['run_id'], train.spawn(**{k: (tuple(v) if k == 'taps' else v) for k, v in c.items()})) for c in cfgs]
+    calls = []
+    for c in cfgs:
+        res = c.pop('resources', None)
+        fn = train.with_options(**res) if res else train
+        calls.append((c['run_id'], fn.spawn(**{k: (tuple(v) if k == 'taps' else v) for k, v in c.items()})))
     for rid, call in calls:
         try:
             print(rid, call.get())
