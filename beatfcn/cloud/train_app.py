@@ -408,14 +408,23 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             os.replace(f'{r.dir}/last.pt.tmp', f'{r.dir}/last.pt')
         data.commit()
     def cf_step(step):
-        # counterfactual support-swap loss (eager, variable shapes); its grads accumulate before the step
+        # counterfactual support-swap loss (eager, variable shapes); its grads accumulate before the step.
+        # With graphs it must run on the TieredStep side stream (never the default stream: capture hazard).
         from beatfcn.model import cf as CF
+        import contextlib
         cbt = to_device(next(cf_it), dev)
-        for r in cf_runs:
-            with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
-                l_cf, cf_acc = CF.cf_loss(r.model, dict(cbt))
-            (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
-            merge(r.acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
+        ctx = contextlib.nullcontext()
+        if gs is not None and gs.side is not None:
+            gs.side.wait_stream(torch.cuda.current_stream())
+            ctx = torch.cuda.stream(gs.side)
+        with ctx:
+            for r in cf_runs:
+                with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
+                    l_cf, cf_acc = CF.cf_loss(r.model, dict(cbt))
+                (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
+                merge(r.acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
+        if gs is not None and gs.side is not None:
+            torch.cuda.current_stream().wait_stream(gs.side)
     cf_runs = [r for r in runs if r.use_cf]
     for step in range(start_step, end):
         lr = lr_at(step, tc)
@@ -901,10 +910,11 @@ def sweep(configs: str):
 
 
 @app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=8.0, memory=32768, timeout=4 * 3600)
-def eval_controls(run_id: str, n_cores: int = 80, taps_key: str = 'v3_pca512q_L9-16-24', pca: str = 'pca512_9-16-24',
-                  seed: int = 20261025):
-    """Control sweep (design §13.2 item 5): same core generated at low/mid/high bands of one control;
-    report how often the generated statistic moves in the requested direction."""
+def eval_controls(run_id: str, n_cores: int = 60, taps_key: str = 'v4_i8_L9-16-24', pca: str = 'i8_9-16-24',
+                  seed: int = 20261025, greedy: bool = True, manifest_name: str = 'charts.jsonl', fields: str = ''):
+    """Control response (design §13.2 item 5), measured with the training-time statistic: for every control
+    field of the mode, request the true band and the bands two edges below / above, generate the same core
+    under each, and compute the achieved value with events.controls.raw_controls. See model.control_eval."""
     import dataclasses
     import numpy as np
     import torch
@@ -913,6 +923,8 @@ def eval_controls(run_id: str, n_cores: int = 80, taps_key: str = 'v3_pca512q_L9
     from beatfcn.model import features as F
     from beatfcn.model.p1 import P1Config, P1Model
     from beatfcn.model.sample import generate_core, core_context
+    from beatfcn.model.evaluation import groups_to_events, legality_issues
+    from beatfcn.model.control_eval import bands_around, summarize
     from beatfcn.train.data import Corpus, load_manifest
     ck = torch.load(f'{DATA}/runs/{run_id}/best.pt', map_location='cuda', weights_only=False)
     cfg = P1Config(**{k: (tuple(v) if isinstance(v, list) else v) for k, v in ck['config'].items()})
@@ -920,13 +932,12 @@ def eval_controls(run_id: str, n_cores: int = 80, taps_key: str = 'v3_pca512q_L9
     model.load_state_dict(ck['model'])
     have = _cached_songs(taps_key)
     corpus = Corpus(DATA, taps_key, layers=cfg.taps, pca=pca)
-    trows = corpus.train_rows([r for r in load_manifest(DATA, split='val') if r['audio_sha256'] in have])
-    sweeps = {'density_notes_per_second': [(1.0, 1.5), (3.0, 4.0), (8.0, 10.0)],
-              'hold_head_ratio': [(0.0, 0.02), (0.1, 0.2), (0.4, 0.5)]}
+    trows = corpus.train_rows([r for r in load_manifest(DATA, split='val', manifest_name=manifest_name) if r['audio_sha256'] in have])
+    want = set(fields.split(',')) if fields else None
     rng = np.random.default_rng(seed)
-    res = {f: {'monotonic': 0, 'cores': 0, 'stats': []} for f in sweeps}
-    tries = 0
-    while min(v['cores'] for v in res.values()) < n_cores and tries < 20 * n_cores:
+    records, tries, cores_done = [], 0, 0
+    t0 = time.time()
+    while cores_done < n_cores and tries < 20 * n_cores:
         tries += 1
         row = trows[rng.integers(len(trows))]
         try:
@@ -936,39 +947,46 @@ def eval_controls(run_id: str, n_cores: int = 80, taps_key: str = 'v3_pca512q_L9
             c0 = F.choose_core(s, np.random.default_rng(tries), row['duration_us'])
         except (F.SkipExample, ValueError, AssertionError):
             continue
-        song = corpus.song(row['song'])
+        song = corpus.song(row['song'], in_memory=True)
         li = F.line_index_of(chart.events)
-        for field, bands in sweeps.items():
-            if res[field]['cores'] >= n_cores:
+        mode = row['mode']
+        editable = [(r['start_us'], r['end_us']) for r in s.request['regions'] if r['state'] == 'editable']
+        core_edit = [(max(c0, a), min(c0 + F.CORE_US, b)) for a, b in editable if b > c0 and a < c0 + F.CORE_US]
+        truth = [e for e in chart.events if c0 <= e.onset_us < c0 + F.CORE_US]
+        true_raw = C.raw_controls(mode, truth, core_edit)
+        for field in C.MODE_FIELDS[mode]:
+            if want and field not in want:
                 continue
-            vals = []
-            for band in bands:
-                req = {**s.request, 'controls': {**s.request['controls'], field: band}}
+            if true_raw.get(field) is None:
+                continue
+            for band in bands_around(field, true_raw[field]):
+                req = {**s.request, 'controls': {**s.request['controls'], field: list(band)}}
                 s2 = dataclasses.replace(s, request=req)
-                ex = F.build_core(s2, chart.events, c0, row['duration_us'], line_index=li)
+                try:
+                    ex = F.build_core(s2, chart.events, c0, row['duration_us'], line_index=li)
+                except (F.SkipExample, ValueError, AssertionError):
+                    continue
                 ex.groups = []
                 holds, runs, heads = core_context(s2, ex, li)
                 with torch.autocast('cuda', dtype=torch.bfloat16):
-                    gen = generate_core(model, ex, song, holds, runs, heads, seed=tries, device='cuda')
-                heads_n = sum(len(g['notes']) for g in gen)
-                holds_n = sum('end_rel_us' in n for g in gen for n in g['notes'])
-                vals.append(heads_n / 8.0 if field.startswith('density') else holds_n / max(heads_n, 1))
-            res[field]['cores'] += 1
-            res[field]['monotonic'] += int(vals[0] <= vals[1] <= vals[2] and vals[0] < vals[2])
-            res[field]['stats'].append(vals)
-    out = {'run': run_id, 'step': ck['step']}
-    for f, v in res.items():
-        st = np.array(v['stats']) if v['stats'] else np.zeros((0, 3))
-        out[f] = {'cores': v['cores'], 'direction_correct': round(v['monotonic'] / max(v['cores'], 1), 3),
-                  'mean_by_band': [round(float(x), 3) for x in st.mean(0)] if len(st) else None, 'bands': sweeps[f]}
+                    gen = generate_core(model, ex, song, holds, runs, heads, seed=tries, device='cuda', greedy=greedy)
+                events = groups_to_events(gen, c0, mode, line_index=li)
+                achieved = C.raw_controls(mode, events, core_edit).get(field)
+                legal = not legality_issues(s2.request, events)
+                records.append({'field': field, 'core': cores_done, 'requested': band, 'achieved': achieved, 'legal': legal,
+                                'true': true_raw[field], 'mode': mode})
+        cores_done += 1
+    out = {'run': run_id, 'step': ck['step'], 'cores': cores_done, 'greedy': greedy, 'seconds': round(time.time() - t0, 1),
+           'summary': summarize(records), 'records': records}
     with open(f'{DATA}/runs/{run_id}/eval_controls.json', 'w') as fo:
         json.dump(out, fo, indent=1)
     data.commit()
-    return out
+    print(json.dumps({k: v for k, v in out.items() if k != 'records'}))
+    return {k: v for k, v in out.items() if k != 'records'}
 
 
 @app.local_entrypoint()
-def controls(run_id: str, n_cores: int = 80):
+def controls(run_id: str, n_cores: int = 60):
     r = eval_controls.remote(run_id, n_cores=n_cores)
     Path(f'reports/controls_{run_id}.json').write_text(json.dumps(r, indent=1))
     print(json.dumps(r, indent=1))

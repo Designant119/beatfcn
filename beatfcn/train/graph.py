@@ -33,6 +33,10 @@ class TieredStep:
         self.warmup, self.before_capture = warmup, before_capture
         self.tiers = [_Tier(i, t) for i, t in enumerate(tiers)]
         self.stats = {'eager_steps': 0, 'graph_steps': 0, 'captures': 0, 'tier_steps': [0] * len(tiers)}
+        # Every backward that is not captured (warm-ups, eager fallback, the counterfactual loss) runs on this one
+        # side stream: autograd's AccumulateGrad nodes remember the stream of the last backward, and a later
+        # capture fails if that was the default stream (third baseline attempt failed exactly so).
+        self.side = torch.cuda.Stream() if self.cuda else None
 
     # ------------------------------------------------------------ static inputs
     def _compact(self):
@@ -76,6 +80,16 @@ class TieredStep:
             buf['w_select'].fill_(w_select)
 
     # ------------------------------------------------------------ the step
+    def _eager(self, slots):
+        """_body outside a capture: on the side stream (see __init__), joined back to the current stream."""
+        if not self.cuda:
+            return self._body(slots)
+        self.side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(self.side):
+            out = self._body(slots)
+        torch.cuda.current_stream().wait_stream(self.side)
+        return out
+
     def _body(self, slots):
         mets = []
         for r in self.runs:
@@ -113,23 +127,19 @@ class TieredStep:
             slots = []
             for bt in batches:
                 b = {k: (v.to(self.dev, non_blocking=True) if torch.is_tensor(v) else v) for k, v in bt.items()}
-                b['w_select'] = torch.tensor(w_select, device=self.dev)
+                b['w_select'] = torch.tensor(float(w_select), device=self.dev)
                 slots.append(b)
-            return self._body(slots)
+            return self._eager(slots)
         tier = self.tiers[ti]
         self.stats['tier_steps'][ti] += 1
         if ti >= self.max_graphs:  # tier too large to keep a captured pool for: eager, still padded (same code path)
             self._fill(tier, batches, w_select)
             self.stats['eager_steps'] += 1
-            return self._body(tier.slots)
+            return self._eager(tier.slots)
         self._fill(tier, batches, w_select)
         if tier.graph is None:
-            if tier.seen < self.warmup:  # eager warm-up on a side stream (allocator / cuBLAS / RNG state)
-                s = torch.cuda.Stream()
-                s.wait_stream(torch.cuda.current_stream())
-                with torch.cuda.stream(s):
-                    out = self._body(tier.slots)
-                torch.cuda.current_stream().wait_stream(s)
+            if tier.seen < self.warmup:  # eager warm-up on the side stream (allocator / cuBLAS / RNG state)
+                out = self._eager(tier.slots)
                 tier.seen += 1
                 self.stats['eager_steps'] += 1
                 return out
