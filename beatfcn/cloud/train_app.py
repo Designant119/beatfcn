@@ -130,6 +130,9 @@ def _pair_audit(rows, corpus, n_try=600, seed=0):
     multi = [k for k, v in groups.items() if len(v) >= 2]
     rng = np.random.default_rng(seed)
     ok_groups, ok = set(), 0
+    if not multi:  # no song with two charts: nothing to pair
+        return {'groups_with_2plus_charts': 0, 'sampled': 0, 'success_rate': 0.0, 'eligible_groups_seen': 0,
+                'est_eligible_pairs': 0, 'by_mode': {'mania_4k': 0, 'phira': 0}}
     for _ in range(n_try):
         k = multi[rng.integers(len(multi))]
         a, b = rng.choice(len(groups[k]), size=2, replace=False)

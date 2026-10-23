@@ -132,10 +132,14 @@ class CoreSampler:
                 return [(ex, cache) for ex in out]
         raise RuntimeError(f'could not draw a valid core: {self.skipped}')
 
-    def fixed(self, n, seed):
+    def fixed(self, n, seed, max_tries=None):
+        """n reproducible (core, song) pairs; gives up after max_tries draws (default 50 x n) so a corpus
+        whose cores are all unusable cannot spin forever."""
         rng, out = np.random.default_rng(seed), []
         rows = sorted(self.charts, key=lambda r: r['chart_id'])
-        while len(out) < n and rows:
+        tries, limit = 0, (max_tries or 50 * n)
+        while len(out) < n and rows and tries < limit:
+            tries += 1
             row = rows[rng.integers(len(rows))]
             s = int(rng.integers(2 ** 31))
             try:
