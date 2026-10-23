@@ -137,7 +137,10 @@ class TieredStep:
                 self.before_capture()
             torch.cuda.synchronize()
             tier.graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(tier.graph):
+            # thread_local: the DataLoader pin-memory thread and the SongPool loaders keep making CUDA calls
+            # (cudaHostAlloc, copies) in other threads; in the default 'global' mode any of them invalidates
+            # the capture (second baseline attempt failed exactly so)
+            with torch.cuda.graph(tier.graph, capture_error_mode='thread_local'):
                 tier.out = self._body(tier.slots)
             self.stats['captures'] += 1
             # the capture itself did not run: replay once for this batch

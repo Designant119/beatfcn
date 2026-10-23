@@ -82,7 +82,7 @@ class TapRunner:
                     unit(self.static_in)
             torch.cuda.current_stream().wait_stream(s)
             self.graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self.graph):
+            with torch.cuda.graph(self.graph, capture_error_mode='thread_local'):  # reader/writer threads keep running
                 self.static_out = unit(self.static_in)
 
     def __call__(self, w, pad_rows):
