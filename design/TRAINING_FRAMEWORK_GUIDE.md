@@ -82,6 +82,10 @@ mel10/<sha>.npy ───────┘       │
   - `zero_grad(set_to_none=False)` 在步末，保证静态梯度张量存在；CF 即时反向依赖这一点。
   - 验证 `evaluate` 走非图路径（动态形状），参数在原地被图更新，无需拷贝。
 
+### 4b. 形状分桶与增量解码（2026-10-23 晚）
+- `train/graph.py::TieredStep`：`batch.TIERS` 定义 3 个形状层级；`step(batches, w_select)` 取各维最大值选最小层级，`_fill` 把每个批次切片拷进该层级的静态缓冲（补齐值与打包一致：多数为 0，`grp_copy/note_*/controls` 为 −1），每层级懒录制一张图；超过最大层级即时执行同一 `_body`。`compact_inner` 时层级 G 必须严格大于批次 G，补齐的 `inner_index` 指向最后一个（必然无效）槽位。`GraphedStep` 保留为单形状包装（试跑、测试）。
+- `model/p1.py::encode(bt, cache)` / `encode_step`：缓存每层旋转后的音频 K/V 与行 K/V；`encode_step` 只算预测第 G 组的那一行（按**有效组数** G 计，Y 块本身按桶补齐），掩码 = 音频窗口 + 有效缓存行 + 自身；遇到"该时刻无合法音符"会丢弃并重算该行。`sample.generate_core(incremental=True)` 默认启用。
+
 ## 5. 显卡常驻歌曲池（`beatfcn/train/pool.py`）
 
 - `request`：后台线程整首读取 → 锁页内存 → 侧流拷到显存；`get`：等加载完成，让当前流等待拷贝事件（无主机同步）；`release` 解除引用；`_evict` LRU 淘汰未被引用的歌。
