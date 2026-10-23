@@ -101,7 +101,9 @@ def mel_windows(rows, mels, pad_row):
 def attach_top(bt, teacher, windows, idx_local, idx_ref, idx_hold, pca_mean, pca_comp, tap_index):
     """Replace the batch's top-tap slices with LoRA-encoded, PCA-projected features (with grad)."""
     top = encode_top(teacher, windows)  # [W,128,8,1024]
-    flat = (top.float() - pca_mean) @ pca_comp  # [W,128,8,Dp]
+    flat = top.float() - pca_mean  # centred like the cache (fit_i8); pca_comp=None: full width
+    if pca_comp is not None:
+        flat = flat @ pca_comp  # [W,128,8,Dp]
     flat = flat.reshape(-1, *flat.shape[2:])
     zero = flat.new_zeros(1, *flat.shape[1:])
     table = torch.cat([flat, zero])  # index -1 -> last row (zeros)

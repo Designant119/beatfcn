@@ -89,3 +89,22 @@ class PoolTests(unittest.TestCase):
                 self.assertEqual(ref[k].dtype, bt[k].dtype, k)
                 self.assertTrue(torch.equal(ref[k], bt[k]), k)
         self.assertEqual(pool.stats['loads'], 1)
+
+
+class PoolRefcountTests(unittest.TestCase):
+    def test_song_referenced_by_two_batches_survives_one_release(self):
+        from beatfcn.train.pool import SongPool
+        quant, _ = songs_pair(4)
+        loader = lambda sha: ({l: quant.taps[l].raw for l in CFG.taps}, quant.summary, quant.mel10)
+        pool = SongPool(loader, CFG.taps, 'cpu', capacity=1)
+        pool.request(['a'])
+        pool.request(['a'])
+        pool.get('a')
+        pool.release(['a'])
+        pool.request(['b'])
+        pool.get('b')  # capacity 1, but 'a' is still referenced by the second batch
+        self.assertIn('a', pool.resident)
+        pool.release(['a'])
+        pool.request(['c'])
+        pool.get('c')
+        self.assertNotIn('a', pool.resident)

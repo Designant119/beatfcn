@@ -278,8 +278,11 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     from beatfcn.model.batch import STATIC
     if graph and accumulation != 1:
         raise ValueError('graph=True needs accumulation=1 (one replay per optimiser step)')
-    stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed, micro_batch, tuple(taps), max(taps),
-                                                 static=STATIC if graph else None),
+    resume_step = 0
+    if os.path.exists(f'{runs[0].dir}/last.pt'):  # resumed runs must not replay the sample sequence from step 0
+        resume_step = int(torch.load(f'{runs[0].dir}/last.pt', map_location='cpu', weights_only=False)['step'])
+    stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed + 7919 * resume_step, micro_batch, tuple(taps),
+                                                 max(taps), static=STATIC if graph else None),
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
                                          pin_memory=device == 'cuda')
     from collections import deque
@@ -351,7 +354,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
     mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
     from beatfcn.train.graph import GraphedStep
-    gs = GraphedStep(runs, tc.clip, dev, capture=cuda) if graph else None
+    gs = GraphedStep(runs, tc.clip, dev, capture=cuda, before_capture=pool.wait_idle) if graph else None
     examples, wait_s, gpu_s, t_loop, aborted = 0, 0.0, 0.0, time.time(), None
     end = min(stop_at, tc.steps) if stop_at else tc.steps
 
@@ -691,7 +694,8 @@ def train_s2(run_id: str, init_run: str, steps: int = 3000, micro_batch: int = 8
     teacher = load_teacher('/weights/teacher_encoder.safetensors', dtype=torch.bfloat16, device='cuda')
     lora = S2.add_lora(teacher)
     z = np.load(f'{DATA}/pca/{pca}.npz')
-    mu, comp = torch.from_numpy(z[f'mean_{mc.top_tap}']).cuda(), torch.from_numpy(z[f'comp_{mc.top_tap}']).cuda()
+    mu = torch.from_numpy(z[f'mean_{mc.top_tap}']).cuda()
+    comp = torch.from_numpy(z[f'comp_{mc.top_tap}']).cuda() if f'comp_{mc.top_tap}' in z else None  # fit_i8: centred only
     ti = mc.taps.index(mc.top_tap)
     have = _cached_songs(taps_key)
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca}
@@ -983,11 +987,12 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
         def __init__(self, model, opt):
             self.model, self.opt = model, opt
 
-    def make(graph, seed=0):
+    def make(graph, seed=0, dropout=None):
         runs = []
         for i in range(2 if paired else 1):
             torch.manual_seed(seed)
-            mc = P1Config(taps=taps, top_tap=max(taps), tap_dim=tap_dim, **{'packed': False, **(variant or {}), 'selection': bool(i)})
+            extra = {} if dropout is None else {'dropout': dropout}
+            mc = P1Config(taps=taps, top_tap=max(taps), tap_dim=tap_dim, **{'packed': False, **(variant or {}), **extra, 'selection': bool(i)})
             m = P1Model(mc).to(dev)
             lr = torch.tensor(1e-4, device=dev) if graph else 1e-4
             runs.append(Run(m, torch.optim.AdamW(m.parameters(), lr=lr, fused=True, capturable=graph)))
@@ -1027,7 +1032,7 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
     print(json.dumps(out), flush=True)
     # --- numerics: fresh models, identical steps eager vs graphed on the same batches
     torch.manual_seed(2)
-    ra, rb = make(False, seed=5), make(True, seed=5)
+    ra, rb = make(False, seed=5, dropout=0.0), make(True, seed=5, dropout=0.0)  # deterministic comparison
     ga, gb = GraphedStep(ra, 1.0, dev, capture=False), GraphedStep(rb, 1.0, dev, capture=True)
     n_check = gb.warmup + 4
     for i in range(n_check):
@@ -1041,7 +1046,7 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
         pa = torch.cat([p.detach().float().flatten() for p in a.model.parameters()])
         pb = torch.cat([p.detach().float().flatten() for p in b.model.parameters()])
         diffs.append(float((pa - pb).abs().max()))
-    out['numerics'] = {'steps': n_check, 'max_abs_param_diff_per_run': diffs}
+    out['numerics'] = {'steps': n_check, 'max_abs_param_diff_per_run': diffs, 'threshold': 1e-4, 'ok': all(d < 1e-4 for d in diffs)}
     mon.close()
     print(json.dumps(out))
     return out

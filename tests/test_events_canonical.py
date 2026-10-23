@@ -99,3 +99,26 @@ class Objects(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SourceStackTests(unittest.TestCase):
+    """DATA_RULES v4: identical stacked notes (<= 4) are intentional and must reach training."""
+
+    def _ev(self, i, t, typ='drag', x=0.5):
+        from beatfcn.events.canonical import Event, LineLoc
+        return Event(f'e{i}', t, t, typ, LineLoc('L0', 'above', x), f'src#{i}')
+
+    def test_allowed_stack_is_not_quarantined(self):
+        from beatfcn.events.canonical import build_model_view
+        v = build_model_view('phira', (), tuple(self._ev(i, 1_000_000) for i in range(4)))
+        self.assertTrue(v.ok, [i.code for i in v.quarantine])
+
+    def test_oversized_stack_is_quarantined(self):
+        from beatfcn.events.canonical import build_model_view
+        v = build_model_view('phira', (), tuple(self._ev(i, 1_000_000) for i in range(5)))
+        self.assertIn('duplicate_object_in_source', [i.code for i in v.quarantine])
+
+    def test_quantization_merge_is_still_quarantined(self):
+        from beatfcn.events.canonical import build_model_view
+        v = build_model_view('phira', (), (self._ev(0, 1_000_200), self._ev(1, 1_000_400)))  # distinct in source, same at 1 ms
+        self.assertIn('duplicate_object_after_quantization', [i.code for i in v.quarantine])

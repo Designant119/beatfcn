@@ -216,7 +216,8 @@ def core_context(sample, ex: FE.CoreExample, line_index):
     """Known holds (observed + earlier generated context), editable runs and observed heads for generation."""
     from ..events.canonical import Event
     observed = [Event.from_json(e) for e in sample.request['observed_events']]
-    generated = [e for e in sample.hidden if ex.c0_us - FE.HALO_US <= e.onset_us < ex.c0_us]
+    l0 = ex.c0_us - FE.HALO_US
+    generated = [e for e in sample.hidden if e.onset_us < ex.c0_us and max(e.occupancy()[1], e.onset_us + 1) > l0]
     holds = [(e.onset_us, e.end_us, e.location.lane if e.location.kind == 'lane' else -1)
              for e in observed + generated if e.is_hold]
     runs = FE.editable_runs(sample.request['regions'])

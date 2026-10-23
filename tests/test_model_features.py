@@ -108,3 +108,34 @@ class SamplerRejectsOversizedGroups(unittest.TestCase):
             with self.assertRaises(RuntimeError):  # every draw is skipped, never a crash from collate
                 smp.draw(1)
         self.assertTrue(any('MAX_NOTES' in k for k in smp.skipped), smp.skipped)
+
+
+class HoldContextTests(unittest.TestCase):
+    """Hold limits and busy lanes use known context only, never the hidden future or the event's own copy."""
+
+    def _core(self, evs, c0, kind='from_scratch'):
+        from beatfcn.events.canonical import Event, LaneLoc
+        from beatfcn.events.requests import build_request
+        from events_helpers import _chart
+        chart = _chart('mania_4k', [Event(f'h{i}', a, b, 'hold' if b > a else 'tap', LaneLoc(l), f'x#{i}') for i, (a, b, l) in enumerate(evs)])
+        s = build_request(chart, kind=kind, seed=0, audio_id='a', audio_duration_us=DURATION, control_dropout=False)
+        return F.build_core(s, chart.events, c0, DURATION)
+
+    def test_hold_limit_ignores_its_own_unquantized_copy(self):
+        ex = self._core([(1_000_400, 2_000_400, 0), (6_000_000, 6_000_000, 1)], 0)
+        hold = next(n for g in ex.groups for n in g['notes'] if 'end_rel_us' in n)
+        self.assertGreater(hold['end_ok_us'][1], 1_000_000)
+        self.assertEqual(F.check_targets(ex), [])
+
+    def test_hold_limit_does_not_depend_on_hidden_future(self):
+        a = self._core([(1_000_000, 2_000_000, 0), (3_000_000, 3_000_000, 0)], 0)
+        b = self._core([(1_000_000, 2_000_000, 0), (5_000_000, 5_000_000, 0)], 0)
+        ha = next(n for g in a.groups for n in g['notes'] if 'end_rel_us' in n)
+        hb = next(n for g in b.groups for n in g['notes'] if 'end_rel_us' in n)
+        self.assertEqual(ha['end_ok_us'], hb['end_ok_us'])
+
+    def test_active_hold_from_before_the_halo_is_known_and_busy(self):
+        ex = self._core([(1_000_000, 12_000_000, 0), (9_000_000, 9_000_000, 1)], 8_000_000)
+        self.assertEqual(len(ex.known), 1)  # the long hold is generated context although it started at 1 s
+        g = next(g for g in ex.groups if g['t_rel_us'] == 1_000_000)
+        self.assertTrue(bool(g['busy_lanes'][0]))

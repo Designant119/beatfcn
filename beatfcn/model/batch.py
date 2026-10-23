@@ -56,8 +56,9 @@ def pool_summary(summary: np.ndarray, max_tokens: int = F.MAX_SUMMARY):
 BUCKET = {'G': 32, 'K': 64, 'R': 64, 'A': 16, 'S': 64, 'H': 64}  # variable dims rounded up: few distinct batch shapes
 # One fixed shape for CUDA-graph training (collate_meta(static=STATIC)); cores beyond a limit are skipped
 # and counted. Limits cover >99% of cores (measured: G<=121, K<=218, R<=256, A<=26, holds/batch<=360).
-STATIC = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': 448}
-STATIC_CORE = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'holds': 56}  # per-core caps the sampler enforces (CoreSampler.limits)
+STATIC_CORE = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'holds': 32}  # per-core caps the sampler enforces (CoreSampler.limits)
+STATIC_BATCH = 32
+STATIC = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': STATIC_CORE['holds'] * STATIC_BATCH}  # H cannot overflow
 
 
 def _bucket(n, q):

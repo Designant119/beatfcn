@@ -259,6 +259,18 @@ def lane_conflicts(events: Iterable[Event]) -> list[tuple[str, str, str]]:
     return out
 
 
+MAX_SOURCE_STACK = 4  # DATA_RULES v4: identical stacked notes (hit-sound weight) are kept up to this count
+
+
+def oversized_stacks(events: Iterable[Event], max_stack: int = MAX_SOURCE_STACK) -> list[tuple[str, str]]:
+    """(first, offending) pairs for every identical-signature stack deeper than max_stack."""
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for e in events:
+        groups[e.signature()].append(e.event_id)
+    return [(ids[0], x) for ids in groups.values() if len(ids) > max_stack for x in ids[max_stack:]]
+
+
 def exact_duplicates(events: Iterable[Event]) -> list[tuple[str, str]]:
     seen, out = {}, []
     for e in events:
@@ -343,8 +355,11 @@ def build_model_view(mode: str, observed: Iterable[Event], hidden: Iterable[Even
         for src, lst in (('in_source', pre), ('after_quantization', post)):
             issues += [Issue(f'lane_collision_{src}', 'quarantine', f'{c}: {a} vs {b}', b) for c, a, b in lst]
     else:
-        pre = exact_duplicates(observed + hidden)
-        post = [x for x in exact_duplicates(observed + tuple(targets)) if x not in pre]
+        # identical stacks up to MAX_SOURCE_STACK are intentional (DATA_RULES v4); deeper stacks, and events
+        # that quantization merged although their source signatures differed, are quarantined
+        pre = oversized_stacks(observed + hidden)
+        sig = {e.event_id: e.signature() for e in observed + hidden}
+        post = [(a, b) for a, b in exact_duplicates(observed + tuple(targets)) if sig[a] != sig[b]]
         for src, lst in (('in_source', pre), ('after_quantization', post)):
             issues += [Issue(f'duplicate_object_{src}', 'quarantine', f'{a} vs {b}', b) for a, b in lst]
     allowed = MODE_TYPES[mode]

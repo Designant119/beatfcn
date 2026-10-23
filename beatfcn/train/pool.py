@@ -32,7 +32,7 @@ class SongPool:
         self.lock = threading.Lock()
         self.resident: OrderedDict[str, _Song] = OrderedDict()  # LRU order: oldest first
         self.pending: dict[str, object] = {}  # sha -> future
-        self.pinned: set[str] = set()  # referenced by queued batches: never evicted
+        self.pinned: dict[str, int] = {}  # sha -> number of queued batches referencing it: never evicted
         self.stats = {'loads': 0, 'evictions': 0, 'load_s': 0.0, 'wait_s': 0.0, 'bytes': 0}
 
     # ------------------------------------------------------------ loading
@@ -58,8 +58,8 @@ class SongPool:
     def request(self, shas):
         """Start loading songs that are not resident; mark them pinned (a queued batch needs them)."""
         with self.lock:
-            for sha in shas:
-                self.pinned.add(sha)
+            for sha in set(shas):
+                self.pinned[sha] = self.pinned.get(sha, 0) + 1
                 if sha in self.resident or sha in self.pending:
                     continue
                 self.pending[sha] = self.pool.submit(self._load, sha)
@@ -67,8 +67,12 @@ class SongPool:
     def release(self, shas):
         """A batch has been consumed: its songs may be evicted again (when capacity requires)."""
         with self.lock:
-            for sha in shas:
-                self.pinned.discard(sha)
+            for sha in set(shas):
+                n = self.pinned.get(sha, 0) - 1
+                if n > 0:
+                    self.pinned[sha] = n
+                else:
+                    self.pinned.pop(sha, None)
 
     def get(self, sha):
         """Resident song for attach_audio (blocks until loaded and copied)."""
@@ -86,10 +90,14 @@ class SongPool:
             with self.lock:
                 self.pending.pop(sha, None)
                 self.resident[sha] = song
-        if song.event is not None:  # the current stream waits for the side-stream copies (no host sync)
-            torch.cuda.current_stream().wait_event(song.event)
-            song.event = None
-            song._host = None
+        if self.cuda:
+            cur = torch.cuda.current_stream()
+            if song.event is not None:  # the current stream waits for the side-stream copies (no host sync)
+                cur.wait_event(song.event)
+                song.event = None
+                song._host = None
+            for t in list(song.taps.values()) + [song.summary, song.mel10]:  # the allocator must not reuse this
+                t.record_stream(cur)  # memory (after eviction) before the consumer stream's reads are done
         with self.lock:
             self.resident.move_to_end(sha)
         self._evict()
@@ -103,6 +111,16 @@ class SongPool:
                     break
                 del self.resident[victim]
                 self.stats['evictions'] += 1
+
+    def wait_idle(self):
+        """Finish every pending load and its device copies (before a CUDA graph capture: no other thread
+        may issue CUDA work while a stream is capturing)."""
+        with self.lock:
+            futs = list(self.pending.items())
+        for sha, fut in futs:
+            self.get(sha)
+        if self.cuda:
+            self.stream.synchronize()
 
     def resident_bytes(self):
         with self.lock:

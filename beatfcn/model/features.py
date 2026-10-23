@@ -122,8 +122,9 @@ def build_core(sample, chart_events, c0: int, audio_duration_us: int, *, line_in
     c1, l0, l1 = c0 + CORE_US, c0 - HALO_US, c0 + CORE_US + HALO_US
     observed = [Event.from_json(e) for e in req['observed_events']]
     hidden = list(sample.hidden)
-    # Earlier hidden targets in the halo = this request's previously generated events.
-    generated = [e for e in hidden if l0 <= e.onset_us < c0]
+    # Earlier hidden targets = this request's previously generated events: onset before the core and
+    # occupancy touching the window (a hold that started before the halo but is still active counts).
+    generated = [e for e in hidden if e.onset_us < c0 and max(e.occupancy()[1], e.onset_us + 1) > l0]
 
     def touches(e):
         a, b = e.occupancy()
@@ -179,15 +180,16 @@ def build_core(sample, chart_events, c0: int, audio_duration_us: int, *, line_in
         stats[k, 4] = inter('editable') / max(t_end - s, 1)
         stats[k, 5] = inter('empty') / max(t_end - s, 1)
 
-    # Hold end limits: the editable run, and (mania) the next head on the same lane. Phira holds on one
-    # line may overlap at different x, so only the run applies there.
-    occupied = [e for e in observed + hidden if e.location.kind == 'lane']
+    # Hold end limits: the editable run, and (mania) the next KNOWN head on the same lane (observed events
+    # and the generated prefix; never hidden future targets, which generation does not have). Phira holds
+    # on one line may overlap at different x, so only the run applies there.
+    occupied = [e for e in observed + generated if e.location.kind == 'lane']
 
     def hold_limit(e: Event):
         run = next(((a, b) for a, b in runs if a <= e.onset_us < b), (e.onset_us, e.onset_us + 1))
         hi = run[1]
         for o in occupied:
-            if e.location.kind == 'lane' and o is not e and o.location == e.location and o.onset_us > e.onset_us:
+            if e.location.kind == 'lane' and o.event_id != e.event_id and o.location == e.location and o.onset_us > e.onset_us:
                 hi = min(hi, o.onset_us)
         return e.onset_us + 1, hi
 

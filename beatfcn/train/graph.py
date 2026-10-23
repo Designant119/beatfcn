@@ -11,9 +11,11 @@ import torch
 
 
 class GraphedStep:
-    def __init__(self, runs, clip: float, device, capture=True, warmup=3):
-        """runs: objects with .model and .opt (AdamW(capturable=True, fused=True), tensor lr)."""
+    def __init__(self, runs, clip: float, device, capture=True, warmup=3, before_capture=None):
+        """runs: objects with .model and .opt (AdamW(capturable=True, fused=True), tensor lr).
+        before_capture(): called once right before the capture (e.g. SongPool.wait_idle)."""
         self.runs, self.clip, self.dev = runs, clip, torch.device(device)
+        self.before_capture = before_capture
         self.capture = capture and self.dev.type == 'cuda'
         self.warmup, self.static, self.graph, self.out = warmup, None, None, None
         self.seen = 0
@@ -56,11 +58,8 @@ class GraphedStep:
         if not self.capture:
             return self._body()
         if self.graph is None:
-            if self.seen == 0:  # grads must exist (allocated) before the warm-up accumulates into them
-                for r in self.runs:
-                    for p in r.model.parameters():
-                        if p.grad is None:
-                            p.grad = torch.zeros_like(p)
+            # parameters that take no gradient (e.g. the disabled Phira placement heads) keep grad=None, exactly
+            # as in the plain loop: AdamW skips them; the warm-up step allocates every grad that is used
             if self.seen < self.warmup:  # eager warm-up on a side stream (allocator / cuBLAS / RNG state)
                 s = torch.cuda.Stream()
                 s.wait_stream(torch.cuda.current_stream())
@@ -69,6 +68,9 @@ class GraphedStep:
                 torch.cuda.current_stream().wait_stream(s)
                 self.seen += 1
                 return out
+            if self.before_capture:
+                self.before_capture()
+            torch.cuda.synchronize()
             self.graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(self.graph):
                 self.out = self._body()
