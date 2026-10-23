@@ -146,15 +146,30 @@ def to_device(bt, dev):
 
 
 def merge(acc, met):
-    for k, (l, n, c) in met.items():
+    """Accumulate metrics where they live: values may be device tensors, so no host sync happens here."""
+    for k, v in met.items():
+        if k == '_illegal':
+            acc['_illegal'] = acc.get('_illegal', 0) + v
+            continue
+        l, n, c = v
         a = acc.setdefault(k, [0.0, 0, 0])
-        a[0] += l * n
-        a[1] += n
-        a[2] += c
+        a[0] = a[0] + l * n
+        a[1] = a[1] + n
+        a[2] = a[2] + c
 
 
 def summarize(acc):
-    return {k: {'loss': round(l / max(n, 1), 4), 'n': n, 'acc': round(c / max(n, 1), 4)} for k, (l, n, c) in acc.items()}
+    """Reads the accumulated metrics once (log/validation time). Raises if any labelled target fell outside
+    its legality mask (the model counts these on the device instead of asserting per batch)."""
+    num = lambda x: float(x) if torch.is_tensor(x) else x
+    bad = num(acc.get('_illegal', 0))
+    if bad:
+        raise AssertionError(f'{int(bad)} labelled target(s) outside the legality mask')
+    out = {}
+    for k, (l, n, c) in ((k, v) for k, v in acc.items() if k != "_illegal"):
+        l, n, c = num(l), int(num(n)), num(c)
+        out[k] = {'loss': round(l / max(n, 1), 4), 'n': n, 'acc': round(c / max(n, 1), 4)}
+    return out
 
 
 @torch.no_grad()

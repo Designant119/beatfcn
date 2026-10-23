@@ -90,3 +90,23 @@ class P1Tests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LegalityTests(unittest.TestCase):
+    def test_illegal_target_is_counted_on_device_and_raised_at_summary(self):
+        from beatfcn.model.p1 import masked_ce
+        from beatfcn.train.loop import merge, summarize
+        logits = torch.randn(3, 5)
+        mask = torch.ones(3, 5, dtype=torch.bool)
+        mask[1, 2] = False
+        valid = torch.tensor([True, True, False])
+        loss, n, c, bad = masked_ce(logits, torch.tensor([0, 2, -1]), valid, mask)
+        self.assertEqual((int(n), int(bad)), (2, 1))
+        acc = {}
+        merge(acc, {'lane': (loss.detach(), n, c), '_illegal': bad})
+        with self.assertRaises(AssertionError):
+            summarize(acc)
+        loss, n, c, bad = masked_ce(logits, torch.tensor([0, 3, -1]), valid, mask)  # legal; padded row ignored
+        ref = torch.nn.functional.cross_entropy(logits[:2].masked_fill(~mask[:2], -1e9), torch.tensor([0, 3]))
+        self.assertEqual(int(bad), 0)
+        self.assertTrue(torch.allclose(loss, ref))

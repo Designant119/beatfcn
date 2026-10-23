@@ -106,19 +106,32 @@ class Layer(nn.Module):
         return x + self.drop(self.f2(F.silu(a) * b))
 
 
+def onehot(x, n):
+    """F.one_hot without its host-side range check (a device sync); inputs are clamped / validated upstream."""
+    return x[..., None] == torch.arange(n, device=x.device)
+
+
 def masked_ce(logits, target, valid, mask=None, name=''):
-    """Mean CE over valid rows; logits [..., C]; invalid classes masked; returns (loss, n, correct)."""
+    """Mean CE over valid rows; logits [..., C]; invalid classes masked.
+
+    Returns device tensors (loss, n, correct, illegal) and never synchronises with the host: rows are
+    weighted, not gathered. `illegal` counts valid rows whose target lies outside the legality mask;
+    callers accumulate it and the training loop raises at log time (summarize) if it is ever > 0."""
     if mask is not None:
         logits = logits.masked_fill(~mask, NEG)
-    if not valid.any():
-        z = logits.sum() * 0
-        return z, 0, 0
-    lg, tg = logits[valid].float(), target[valid]
+    C = logits.shape[-1]
+    lg = logits.reshape(-1, C).float()
+    v = valid.reshape(-1)
+    tg = target.reshape(-1).clamp(0, C - 1)  # rows outside `valid` may carry -1 padding
+    ce = F.cross_entropy(lg, tg, reduction='none')
+    n = v.sum()
+    loss = (ce * v).sum() / n.clamp(min=1)
+    correct = ((lg.argmax(-1) == tg) & v).sum()
     if mask is not None:
-        okm = mask[valid].gather(-1, tg[:, None])[:, 0]
-        assert bool(okm.all()), f'{name}: {int((~okm).sum())} target(s) outside the legality mask, e.g. class {int(tg[~okm][0])}'
-    loss = F.cross_entropy(lg, tg)
-    return loss, int(tg.numel()), int((lg.argmax(-1) == tg).sum())
+        illegal = (v & ~mask.reshape(-1, C).gather(-1, tg[:, None])[:, 0]).sum()
+    else:
+        illegal = torch.zeros((), dtype=torch.long, device=lg.device)
+    return loss, n, correct, illegal
 
 
 def logistic_mixture_nll(params, x, bins=256):
@@ -232,7 +245,7 @@ class P1Model(nn.Module):
     @staticmethod
     def _right_feats(r):
         lane = r[..., 1].long()
-        oh = F.one_hot(torch.where(lane < 0, torch.full_like(lane, 4), lane), 5).float()
+        oh = onehot(torch.where(lane < 0, torch.full_like(lane, 4), lane), 5).float()
         return torch.cat([torch.log1p(r[..., 0:1].clamp(min=0)), torch.log1p(r[..., 3:4].clamp(min=0)), oh,
                           (r[..., 2:3].clamp(min=-1) + 1) / FE.MAX_LINES], -1)
 
@@ -477,9 +490,11 @@ class P1Model(nn.Module):
             lab = bt['cell_sel']  # [B,200] 1 head, 0 none, -1 unknown
             pos, neg = lab == 1, lab == 0
             bce = F.binary_cross_entropy_with_logits(s_core.float(), pos.float(), reduction='none')
-            if pos.any() and neg.any():
-                l_sel = 0.5 * (bce[pos].mean() + bce[neg].mean())
-                m['select'] = (l_sel * bt.get('w_select', 1.0), int(pos.sum() + neg.sum()), int(((s_core > 0) == pos)[pos | neg].sum()))
+            n_pos, n_neg = pos.sum(), neg.sum()
+            both = (n_pos > 0) & (n_neg > 0)  # balanced BCE only when both classes are present (as before)
+            l_sel = 0.5 * ((bce * pos).sum() / n_pos.clamp(min=1) + (bce * neg).sum() / n_neg.clamp(min=1)) * both
+            hit = (((s_core > 0) == pos) & (pos | neg)).sum() * both
+            m['select'] = (l_sel * bt.get('w_select', 1.0), (n_pos + n_neg) * both, hit, torch.zeros_like(hit))
         t_prev = torch.cat([torch.full((B, 1), -0.001, device=dev), bt['grp_t']], 1)
         logits, mask, ok = self.time_logits(bt, h, ptr_audio, fine, t_prev)
         row_valid = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=dev), bt['grp_valid']], 1)
@@ -489,8 +504,7 @@ class P1Model(nn.Module):
         copy = torch.cat([bt['grp_copy'], torch.full((B, 1), -1, device=dev)], 1)
         binx = torch.cat([bt['grp_bin'], torch.zeros(B, 1, dtype=torch.long, device=dev)], 1)
         tgt = torch.where(has & (copy >= 0), 1 + FE.CORE_BINS + copy, torch.where(has, 1 + binx, tgt))
-        loss_t, n_t, c_t = masked_ce(logits, tgt, row_valid, mask, 'time')
-        m['time'] = (loss_t, n_t, c_t)
+        m['time'] = masked_ce(logits, tgt, row_valid, mask, 'time')
         # 1 ms residual for free-bin targets
         free = bt['grp_valid'] & (bt['grp_copy'] < 0)
         bi, gi = free.nonzero(as_tuple=True)
@@ -502,11 +516,12 @@ class P1Model(nn.Module):
         bi, gi = bt['grp_valid'].nonzero(as_tuple=True)
         if len(bi):
             self._inner(bt, h, ptr_audio, fine, bi, gi, m)
-        total, metrics = 0.0, {}
-        for k, (l, n, cnum) in m.items():
-            if n:
-                total = total + l
-                metrics[k] = (float(l.detach()), n, cnum)
+        total, metrics, illegal = 0.0, {}, 0
+        for k, (l, n, cnum, bad) in m.items():
+            total = total + l  # zero when the head had no valid rows
+            metrics[k] = (l.detach(), n, cnum)
+            illegal = illegal + bad
+        metrics['_illegal'] = illegal  # device tensor; checked by loop.summarize
         return total, metrics
 
     def _inner(self, bt, h, ptr_audio, fine, bi, gi, m):
@@ -522,17 +537,17 @@ class P1Model(nn.Module):
         allowed = bt['allowed_types'][bi] & torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.bool, device=dev)[mode]
         n_lines = bt['lines'][bi]
         used = bt['busy'][bi, gi].clone()
-        hold_pos = {(int(b), int(g), int(n)): k for k, (b, g, n) in enumerate(bt['hold_index'].tolist())}
         acc = {k: [] for k in ('cont', 'type', 'lane', 'line', 'side')}
-        x_nll, hold_rows = [], []
+        x_nll, o2_steps = [], []
         inp = self.start.expand(N, -1)
+        last = bt.get('max_notes')  # host int from collate: the loop length needs no device query
         for j in range(MAX_NOTES + 1):
             hs = self.gru_cell(inp, hs)
             active = j <= n_notes  # this step exists (decides continue or emits note j)
             if j >= 1:
                 acc['cont'].append((self.cont(hs), (j < n_notes).long(), active, None))
             emit = j < n_notes
-            if not emit.any():
+            if (j >= last) if last is not None else not emit.any():
                 break
             jt = typ[:, j]
             acc['type'].append((self.type_h(hs), jt, emit, allowed))
@@ -550,12 +565,11 @@ class P1Model(nn.Module):
                     x_nll.append(logistic_mixture_nll(self.x_h(torch.cat([o1, le], -1))[is_p], true_x[is_p, j]))
             else:
                 le = torch.zeros(N, 64, device=dev)  # Phira placement unknown to the generator
-            loc = torch.where(mode[:, None] == 0, torch.cat([F.one_hot(lane[:, j].clamp(min=0), 4).float(),
+            loc = torch.where(mode[:, None] == 0, torch.cat([onehot(lane[:, j].clamp(min=0), 4).float(),
                                                              torch.zeros(N, 60, device=dev)], -1), le)
             o2 = o1 + self.loc_c(torch.cat([loc, self.side_e((side[:, j] + 1).clamp(0, 2)), x[:, j, None]], -1))
-            for r in (emit & (jt == 1)).nonzero(as_tuple=True)[0].tolist():
-                hold_rows.append((r, hold_pos[(int(bi[r]), int(gi[r]), j)], o2[r]))
-            used = used | (is_m[:, None] & F.one_hot(lane[:, j].clamp(min=0), 4).bool())
+            o2_steps.append(o2)
+            used = used | (is_m[:, None] & onehot(lane[:, j].clamp(min=0), 4))
             inp = self._note_emb(jt, lane[:, j], line[:, j], side[:, j], x[:, j], dur[:, j])
         for k, items in acc.items():
             if not items:
@@ -567,14 +581,18 @@ class P1Model(nn.Module):
             m[k] = masked_ce(lg, tg, vl, mk, k)
         if x_nll:
             xn = torch.cat(x_nll)
-            m['x'] = (xn.mean(), len(xn), 0)
-        if hold_rows:
-            self._hold(bt, hold_rows, m)
+            zero = torch.zeros((), dtype=torch.long, device=dev)
+            m['x'] = (xn.mean(), torch.full((), len(xn), device=dev), zero, zero)
+        H = bt['hold_index'].shape[0]  # shapes are host metadata: no sync
+        if H:
+            # hold k = note (b, g, n): its GRU row is the rank of group (b, g) among valid groups (bi, gi order)
+            hi = bt['hold_index']
+            rank = (bt['grp_valid'].reshape(-1).cumsum(0) - 1).view_as(bt['grp_valid'])
+            o = torch.stack(o2_steps, 1)[rank[hi[:, 0], hi[:, 1]], hi[:, 2]]
+            self._hold(bt, torch.arange(H, device=dev), o, m)
 
-    def _hold(self, bt, hold_rows, m):
+    def _hold(self, bt, k, o, m):
         dev = bt['mode'].device
-        k = torch.tensor([r[1] for r in hold_rows], device=dev)
-        o = torch.stack([r[2] for r in hold_rows])
         onset = bt['hold_onset_us'][k]
         lo, hi = bt['hold_ok_lo'][k], bt['hold_ok_hi'][k]
         b0 = onset // FE.BLOCK_US

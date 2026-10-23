@@ -208,6 +208,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         if use_cf:
             cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, mc.taps),
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
+    from beatfcn.cloud.gpu_util import GpuUtil
+    mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
     acc, examples, wait_s, gpu_s = {}, 0, 0.0, 0.0
     end = min(stop_at, tc.steps) if stop_at else tc.steps
     for step in range(start_step, end):
@@ -223,8 +225,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             with torch.autocast('cuda', dtype=torch.bfloat16):
                 loss, met = model(bt)
             (loss / tc.accumulation).backward()
-            torch.cuda.synchronize()
-            gpu_s += time.time() - tg
+            gpu_s += time.time() - tg  # host-side issue time (no per-micro-batch sync: the device runs ahead)
             merge(acc, met)
             examples += bt['mode'].shape[0]
         if use_cf and step >= cf_start and step % cf_every == 0:
@@ -233,14 +234,15 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             with torch.autocast('cuda', dtype=torch.bfloat16):
                 l_cf, cf_acc = CF.cf_loss(model, cbt)
             (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
-            merge(acc, {'cf': (float(l_cf.detach()), cbt['audio'].shape[0], int(round(float(cf_acc) * cbt['audio'].shape[0])))})
+            merge(acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
         gn = torch.nn.utils.clip_grad_norm_(model.parameters(), tc.clip)
         opt.step()
         opt.zero_grad(set_to_none=True)
         if (step + 1) % tc.log_every == 0:
             log({'event': 'train', 'step': step + 1, 'lr': lr_at(step, tc), 'grad_norm': float(gn), 'examples': examples,
                  'data_wait_s': round(wait_s, 1), 'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
-                 'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2), 'fields': summarize(acc), 'skipped': skipped})
+                 'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2), 'gpu_util': mon.take()['util_mean'],
+                 'fields': summarize(acc), 'skipped': skipped})
             acc = {}
         if (step + 1) % tc.validate_every == 0 or step + 1 in (tc.steps, end):
             v = evaluate(model, val, corpus.song, mc, dev, micro_batch)

@@ -88,6 +88,7 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
         'note_x': torch.zeros(B, G, MAX_NOTES), 'note_dur': torch.zeros(B, G, MAX_NOTES),
         'cell_sel': torch.zeros(B, F.CORE_US // F.CELL_US, dtype=torch.long),
     }
+    out['max_notes'] = max([len(tg['notes']) for e in examples for tg in e.groups] + [0])  # host int: GRU loop length
     hold_index, hold = [], {'block': [], 'coarse': [], 'fine': [], 'ok_lo': [], 'ok_hi': [], 'onset_us': [], 'blocks': [], 'detail': []}
     for b, (ex, song) in enumerate(zip(examples, songs)):
         for j, layer in enumerate(taps):
