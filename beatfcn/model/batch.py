@@ -61,6 +61,64 @@ STATIC_BATCH = 32
 STATIC = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': STATIC_CORE['holds'] * STATIC_BATCH}  # H cannot overflow
 
 
+# CUDA-graph shape tiers (train.graph.TieredStep): a dynamic batch is padded up to the smallest tier that
+# holds it; batches beyond the last tier run eagerly. Padding only adds rows every loss already masks
+# (valid flags false, hold_valid false), so no sample is dropped and no summary is pooled differently.
+TIERS = [
+    {'G': 64, 'K': 128, 'R': 128, 'A': 16, 'S': 128, 'H': 192},
+    {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': 512},
+    {'G': 256, 'K': 512, 'R': 256, 'A': 32, 'S': 640, 'H': 1536},
+]
+# which padded axis each batch key grows along (everything else has a fixed shape per micro-batch size)
+AXIS = {**{k: ('G', 1) for k in ('grp_valid', 'grp_t', 'grp_bin', 'grp_res', 'grp_copy', 'grp_n', 'busy', 'right_new',
+                                 'note_type', 'note_lane', 'note_line', 'note_side', 'note_x', 'note_dur')},
+        'right_rows': ('G1', 1),
+        'known': ('K', 1), 'known_valid': ('K', 1),
+        'refs': ('R', 1), 'refs_valid': ('R', 1), 'ref_audio': ('R', 1),
+        'copy_t': ('A', 1), 'copy_valid': ('A', 1),
+        'summary': ('S', 1), 'summary_t': ('S', 1), 'summary_stats': ('S', 1), 'summary_valid': ('S', 1),
+        **{k: ('H', 0) for k in ('hold_index', 'hold_valid', 'hold_block', 'hold_coarse', 'hold_fine', 'hold_ok_lo',
+                                 'hold_ok_hi', 'hold_onset_us', 'hold_blocks', 'hold_detail', 'hold_inner_index')},
+        'inner_index': ('N', 0)}  # compact_inner: valid-group rows; N = B x G x 3/4 per tier, padded with an invalid slot
+PAD_VALUE = {'grp_copy': -1, 'note_lane': -1, 'note_line': -1, 'note_side': -1, 'controls': -1}  # collate's padding
+
+
+def batch_dims(bt) -> dict:
+    d = {'G': bt['grp_t'].shape[1], 'K': bt['known'].shape[1], 'R': bt['refs'].shape[1], 'A': bt['copy_t'].shape[1],
+         'S': bt['summary_t'].shape[1], 'H': bt['hold_index'].shape[0], 'B': bt['mode'].shape[0]}
+    if 'inner_index' in bt:
+        d['N'] = bt['inner_index'].shape[0]
+    return d
+
+
+def tier_n(tier, B):
+    return B * tier['G'] * 3 // 4
+
+
+def tier_of(dims: dict, tiers=TIERS):
+    """Index of the smallest tier holding `dims`, or None (eager fallback). With compaction ('N' in dims)
+    the tier must leave the last group slot free (its index is the padding sentinel) and hold N rows."""
+    compact = 'N' in dims
+    for i, t in enumerate(tiers):
+        if not all(dims[k] <= t[k] for k in t):
+            continue
+        if compact and (dims['G'] >= t['G'] or dims['N'] > tier_n(t, dims['B'])):
+            continue
+        return i
+    return None
+
+
+def tier_shape(key, shape, tier, B=None):
+    """Static shape of batch key `key` (dynamic shape `shape`) in `tier`."""
+    if key not in AXIS:
+        return tuple(shape)
+    name, ax = AXIS[key]
+    n = tier['G'] + 1 if name == 'G1' else tier_n(tier, B) if name == 'N' else tier[name]
+    out = list(shape)
+    out[ax] = n
+    return tuple(out)
+
+
 def _bucket(n, q):
     return -(-max(n, 1) // q) * q
 

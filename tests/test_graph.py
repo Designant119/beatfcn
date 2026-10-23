@@ -95,3 +95,63 @@ class GraphedStepTests(unittest.TestCase):
         for (n1, p1), (n2, p2) in zip(m_ref.named_parameters(), m_gs.named_parameters()):
             self.assertTrue(torch.allclose(p1, p2, atol=1e-6), n1)
         self.assertIn('select', mets[0])
+
+
+class TieredStepTests(unittest.TestCase):
+    def _dyn(self, n, seed):
+        return batch(n, seed=seed)
+
+    def test_tier_selection_and_padding_preserve_losses(self):
+        from beatfcn.model.batch import TIERS, batch_dims, tier_of, tier_shape, AXIS
+        from beatfcn.train.graph import TieredStep
+        bt = self._dyn(3, 4)
+        dims = batch_dims(bt)
+        self.assertEqual(tier_of(dims), 0)
+        self.assertIsNone(tier_of({**dims, 'K': 10 ** 6}))
+        torch.manual_seed(0)
+        m = P1Model(dataclasses.replace(CFG, dropout=0.0, selection=True)).eval()
+        ts = TieredStep([_Run(m, torch.optim.AdamW(m.parameters(), lr=1e-3))], 1.0, 'cpu', capture=False)
+        tier = ts.tiers[1]  # pad up to tier 1 explicitly and compare with the unpadded batch
+        ts._alloc(tier, [bt])
+        ts._fill(tier, [bt], 0.2)
+        padded = dict(tier.slots[0])
+        for k in bt:
+            if torch.is_tensor(bt[k]) and k in AXIS:
+                self.assertEqual(tuple(padded[k].shape), tier_shape(k, bt[k].shape, tier.spec, bt['mode'].shape[0]), k)
+        with torch.no_grad():
+            la, ma = m(dict(bt, w_select=0.2))
+            lb, mb = m(padded)
+        self.assertAlmostEqual(float(la), float(lb), places=4)
+        for k in ma:
+            if k != '_illegal':
+                self.assertEqual(int(ma[k][1]), int(mb[k][1]), k)
+                self.assertEqual(int(ma[k][2]), int(mb[k][2]), k)
+
+    def test_eager_tiered_step_equals_plain_accumulation(self):
+        from beatfcn.train.graph import TieredStep
+        batches = [self._dyn(2, 11), self._dyn(3, 12)]
+        torch.manual_seed(3)
+        ref = P1Model(dataclasses.replace(CFG, dropout=0.0))
+        cand = copy.deepcopy(ref)
+        oa, ob = torch.optim.AdamW(ref.parameters(), lr=1e-3), torch.optim.AdamW(cand.parameters(), lr=1e-3)
+        ts = TieredStep([_Run(cand, ob)], 1.0, 'cpu', capture=False)
+        for _ in range(2):
+            for bt in batches:
+                loss, _ = ref(dict(bt, w_select=0.0))
+                (loss / len(batches)).backward()
+            torch.nn.utils.clip_grad_norm_(ref.parameters(), 1.0)
+            oa.step()
+            oa.zero_grad(set_to_none=True)
+            ts.step(batches, 0.0)
+        for (n, p), q in zip(ref.named_parameters(), cand.parameters()):
+            torch.testing.assert_close(p, q, atol=1e-6, rtol=1e-5, msg=n)
+        self.assertEqual(ts.stats['eager_steps'], 2)
+
+    def test_compact_inner_tier_uses_an_invalid_sentinel_slot(self):
+        from beatfcn.model.batch import batch_dims, tier_of, prepare_inner_indices
+        bt = prepare_inner_indices(self._dyn(3, 6))
+        dims = batch_dims(bt)
+        ti = tier_of(dims)
+        self.assertIsNotNone(ti)
+        from beatfcn.model.batch import TIERS
+        self.assertLess(dims['G'], TIERS[ti]['G'])  # the last slot of every core is padding -> invalid

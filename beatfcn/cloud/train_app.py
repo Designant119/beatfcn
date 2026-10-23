@@ -258,8 +258,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     min_util: cost guard. From check_after_s seconds into training, a log interval whose GPU utilisation is
     below min_util checkpoints every run (resumable) and stops.
 
-    graph: one fixed batch shape (batch.STATIC) and the whole optimiser step replayed as a CUDA graph
-    (train.graph.GraphedStep); accumulation must be 1."""
+    graph: the optimiser step replayed as a CUDA graph per shape tier (batch.TIERS, train.graph.TieredStep):
+    dynamic batches are padded with masked rows, never filtered; batches beyond the largest tier run eagerly."""
     function_started = time.perf_counter()
     import numpy as np
     import torch
@@ -304,14 +304,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                      validate_every=validate_every, val_cores=val_cores)
     corpus = Corpus(**corpus_args)
     # the training stream starts first: its workers warm up while validation cores are built
-    from beatfcn.model.batch import STATIC
-    if graph and accumulation != 1:
-        raise ValueError('graph=True needs accumulation=1 (one replay per optimiser step)')
-    resume_step = 0
-    if os.path.exists(f'{runs[0].dir}/last.pt'):  # resumed runs must not replay the sample sequence from step 0
-        resume_step = int(torch.load(f'{runs[0].dir}/last.pt', map_location='cpu', weights_only=False)['step'])
     stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed + 7919 * resume_step, micro_batch, tuple(taps),
-                                                 max(taps), static=STATIC if graph else None),
+                                                 max(taps), static=None),  # graphs pad per shape tier: no static filtering
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
                                          pin_memory=device == 'cuda')
     from collections import deque
@@ -389,8 +383,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, tuple(taps)),
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
     mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
-    from beatfcn.train.graph import GraphedStep
-    gs = GraphedStep(runs, tc.clip, dev, capture=cuda, before_capture=pool.wait_idle) if graph else None
+    from beatfcn.train.graph import TieredStep
+    gs = TieredStep(runs, tc.clip, dev, capture=cuda, before_capture=pool.wait_idle) if graph else None
     examples, wait_s, gpu_s, t_loop, aborted = 0, 0.0, 0.0, time.time(), None
     end = min(stop_at, tc.steps) if stop_at else tc.steps
 
@@ -421,20 +415,22 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                     g['lr'] = lr
         w_sel = 0.2 * min(1.0, (step + 1) / 1000)
         cf_due = bool(cf_runs) and step >= cf_start and step % cf_every == 0
-        if gs is not None:  # graphed: fill static inputs, eager CF grads, one replay = fwd + bwd + clip + step
+        if gs is not None:  # graphed: `accumulation` dynamic batches -> shape tier -> one replay (eager beyond tiers)
             tw = time.time()
-            bt, skipped = next(it)
-            gs.fill(bt, w_sel)
+            batches = []
+            for _ in range(tc.accumulation):
+                bt, skipped = next(it)
+                batches.append(bt)
             tg = time.time()
             wait_s += tg - tw
             if cf_due:
                 cf_step(step)
-            mets, norms = gs.step()
+            mets, norms = gs.step(batches, w_sel)
             for r, met, gn in zip(runs, mets, norms):
                 merge(r.acc, met)
                 r.gn = gn
             gpu_s += time.time() - tg
-            examples += bt['mode'].shape[0]
+            examples += sum(b['mode'].shape[0] for b in batches)
         else:
             for _ in range(tc.accumulation):
                 tw = time.time()
@@ -462,6 +458,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             shared = {'step': step + 1, 'lr': lr_at(step, tc), 'examples': examples, 'data_wait_s': round(wait_s, 1),
                       'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
                       'pool': {k: (round(v, 1) if isinstance(v, float) else v) for k, v in pool.stats.items()},
+                      'graph': dict(gs.stats) if gs is not None else None,
                       'pool_gb': round(pool.resident_bytes() / 1e9, 2),
                       'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2) if cuda else None,
                       'gpu_util': mon.take()['util_mean'], 'skipped': skipped, 'sampling_audit_by_worker': worker_audits}
