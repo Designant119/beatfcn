@@ -31,7 +31,7 @@ class PipelineTests(unittest.TestCase):
         runner = P.TapRunner(fake_fwd(want), want, layers, quant, batch=4, window_shape=(1, M.WINDOW, 128),
                              device='cpu', mode='eager')
         saved = {}
-        stats = P.run(list(mels), lambda s: mels[s], lambda s, arrs: saved.__setitem__(s, dict(arrs)), runner, layers,
+        stats = P.run(list(mels), lambda s: mels[s], lambda s, arrs: saved.__setitem__(s, {k: v.copy() for k, v in arrs}), runner, layers,
                       group=2, writers=3, device='cpu')
         self.assertEqual(stats['songs'], len(mels))
         fwd = fake_fwd(want)
@@ -48,6 +48,29 @@ class PipelineTests(unittest.TestCase):
             s20 = P.summary_half(torch.cat(ref[20])[:pl.cells]).numpy()
             np.testing.assert_array_equal(saved[sha]['S20'], s20)
             self.assertEqual(list(saved[sha]), ['L9', 'L16', 'L24', 'S20'])  # S20 written last
+
+    def test_rings_and_fallbacks_match_reference(self):
+        """Tiny rings: songs longer than max_cells and oversize groups take the fallback buffers; slots recycle."""
+        rng = np.random.default_rng(1)
+        mels = {f't{i}': rng.standard_normal((int(n), 128)).astype(np.float16)
+                for i, n in enumerate([900, 5200, 1500, 400, 3100, 2200, 700])}
+        layers, want = (9, 16, 24), [9, 16, 20, 24]
+        quant = P.quantiser(layers)
+        runner = P.TapRunner(fake_fwd(want), want, layers, quant, batch=3, window_shape=(1, M.WINDOW, 128),
+                             device='cpu', mode='eager')
+        saved = {}
+        stats = P.run(list(mels), lambda s: mels[s], lambda s, arrs: saved.__setitem__(s, {k: v.copy() for k, v in arrs}),
+                      runner, layers, group=2, writers=2, readers=2, device='cpu', out_slots=2, in_slots=2, max_cells=500)
+        self.assertGreater(stats['fallback_buffers'], 0)
+        fwd = fake_fwd(want)
+        for sha, mel in mels.items():
+            pl = M.plan(mel.shape[0])
+            w = M.window_batch(mel.astype(np.float32), pl.starts, M.silence_row()).to(torch.bfloat16)
+            ref = [t.reshape(-1, *t.shape[2:])[:pl.cells] for t in fwd(w)]
+            for l, t in zip(want, ref):
+                if l in layers:
+                    np.testing.assert_array_equal(saved[sha][f'L{l}'], quant(l, t).numpy(), err_msg=f'{sha} L{l}')
+            np.testing.assert_array_equal(saved[sha]['S20'], P.summary_half(ref[2]).numpy())
 
     def test_summary_half_matches_memory_summary_means(self):
         t = torch.randn(237, 8, D)

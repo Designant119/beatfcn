@@ -11,6 +11,7 @@ Design (GPU occupancy first, measured in beatfcn/cloud/encode_app.py):
     device->host copies that writer threads wait on; the main thread never commits or syncs per group.
 """
 from __future__ import annotations
+import queue
 import time
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
@@ -114,53 +115,79 @@ class _NoEvent:
         pass
 
 
-def run(work, load_mel, save, runner, layers, *, group=4, writers=6, device='cuda', summary_layer=20,
-        on_first_group=None, on_steady_end=None, max_pending=None, guard=None):
-    """Encode songs `work` (ids). load_mel(id) -> float32 [frames, 128]; save(id, [(name, ndarray)]) writes
+def run(work, load_mel, save, runner, layers, *, group=4, writers=8, readers=2, device='cuda', summary_layer=20,
+        on_first_group=None, on_steady_end=None, guard=None, out_slots=None, in_slots=3, max_cells=15000):
+    """Encode songs `work` (ids). load_mel(id) -> float [frames, 128]; save(id, [(name, ndarray)]) writes
     L{l} for each cache layer and S{summary_layer} last. Returns throughput / host-time statistics.
     guard(steady_seconds, steady_windows) -> reason or None, called after each steady group: a reason
-    stops encoding early (songs already enqueued are still written completely)."""
+    stops encoding early (songs already enqueued are still written completely).
+
+    Host buffers are preallocated rings (pinned on CUDA) so the steady state never calls cudaHostAlloc:
+    `in_slots` window buffers for groups of up to group x ceil(max_cells / 128) + 2 windows, `out_slots`
+    result buffers for songs up to `max_cells` cells. Larger groups/songs fall back to one-off buffers."""
     cuda = str(device).startswith('cuda')
-    pad = torch.from_numpy(M.silence_row()).to(device, runner.static_in.dtype)
-    pad_rows = pad.view(1, 1, 1, -1).expand(runner.batch, 1, M.WINDOW, pad.shape[0])
+    dt_in = runner.static_in.dtype
+    pad_host = torch.from_numpy(M.silence_row()).to(dt_in)
+    pad_rows = pad_host.to(device).view(1, 1, 1, -1).expand(runner.batch, 1, M.WINDOW, pad_host.shape[0])
     groups = [work[i:i + group] for i in range(0, len(work), group)]
-    max_pending = max_pending or 3 * group
-    stats = {'songs': 0, 'windows': 0, 'bytes': 0, 'write_s': 0.0}
+    out_slots = out_slots or 3 * group
+    max_win = group * (-(-max_cells // CENTRE_CELLS) + 2)
+    stats = {'songs': 0, 'windows': 0, 'bytes': 0, 'write_s': 0.0, 'fallback_buffers': 0}
     host_t = {'wait_reader': 0.0, 'launch': 0.0, 'post': 0.0, 'wait_writer': 0.0}
     want = runner.want
+    in_free, out_free = queue.Queue(), queue.Queue()
+    for _ in range(in_slots):
+        in_free.put((torch.empty((max_win, 1, M.WINDOW, pad_host.shape[0]), dtype=dt_in, pin_memory=cuda), _NoEvent()))
 
-    def prep(g):  # reader thread: mels -> bf16 window batch for the whole group (pinned on CUDA)
-        mels = [load_mel(sha) for sha in g]
+    def prep(g):  # reader thread: windows written straight into a ring slot (== window_batch(...).to(dt_in))
+        mels = [torch.from_numpy(np.asarray(load_mel(sha))) for sha in g]
         plans = [M.plan(m.shape[0]) for m in mels]
-        win = torch.cat([M.window_batch(m, pl.starts, M.silence_row()) for m, pl in zip(mels, plans)])
-        win = win.to(runner.static_in.dtype)
-        return g, plans, (win.pin_memory() if cuda else win)
+        total = sum(len(pl.starts) for pl in plans)
+        if total <= max_win:
+            slot, ev = in_free.get()
+            ev.synchronize()  # the previous group's host->device copies from this slot have completed
+            buf = slot
+        else:
+            slot, buf = None, torch.empty((total, 1, M.WINDOW, pad_host.shape[0]), dtype=dt_in, pin_memory=cuda)
+        k = 0
+        for m, pl in zip(mels, plans):
+            mb, T = m.to(dt_in), m.shape[0]
+            for st in pl.starts:
+                dst = buf[k, 0]
+                a, b = max(st, 0), min(st + M.WINDOW, T)
+                if a > st or b < st + M.WINDOW:
+                    dst.copy_(pad_host.expand(M.WINDOW, -1))
+                if b > a:
+                    dst[a - st:b - st].copy_(mb[a:b])
+                k += 1
+        return g, plans, buf[:total], slot
 
-    def write_after(ev, sha, host):
+    def write_after(ev, sha, host, slot):
         ev.synchronize()
         t = time.time()
         arrays = [(name, h.numpy()) for name, h in host]
         save(sha, arrays)
-        return sum(a.nbytes for _, a in arrays), time.time() - t
+        nbytes = sum(a.nbytes for _, a in arrays)
+        if slot is not None:
+            out_free.put(slot)
+        return nbytes, time.time() - t
 
-    reader, writer, pending = ThreadPoolExecutor(1), ThreadPoolExecutor(writers), []
+    reader, writer, pending = ThreadPoolExecutor(readers), ThreadPoolExecutor(writers), []
 
-    def drain(limit):
-        while len(pending) > limit:
-            tw = time.time()
+    def collect(block):
+        while pending and (block or pending[0].done()):
             b, ws = pending.pop(0).result()
-            host_t['wait_writer'] += time.time() - tw
             stats['bytes'] += b
             stats['write_s'] += ws
-    nxt = reader.submit(prep, groups[0]) if groups else None
-    t_steady = w_steady = b_steady = None
+    futs = [reader.submit(prep, groups[i]) for i in range(min(readers, len(groups)))]
+    t_steady = w_steady = None
     with torch.inference_mode():
         for gi in range(len(groups)):
             tw = time.time()
-            g, plans, win = nxt.result()
+            g, plans, win, in_slot = futs.pop(0).result()
             host_t['wait_reader'] += time.time() - tw
-            if gi + 1 < len(groups):
-                nxt = reader.submit(prep, groups[gi + 1])
+            if gi + readers < len(groups):
+                futs.append(reader.submit(prep, groups[gi + readers]))
             tl = time.time()
             total = win.shape[0]
             acc = {}
@@ -172,25 +199,43 @@ def run(work, load_mel, save, runner, layers, *, group=4, writers=6, device='cud
                     if l not in acc:
                         acc[l] = t.new_empty((total * CENTRE_CELLS, *t.shape[2:]))
                     acc[l][i * CENTRE_CELLS:(i + n) * CENTRE_CELLS].copy_(t[:n].reshape(-1, *t.shape[2:]))
+            if in_slot is not None:  # slot is reusable once the copies just enqueued have run
+                ev = torch.cuda.Event() if cuda else _NoEvent()
+                ev.record()
+                in_free.put((in_slot, ev))
             host_t['launch'] += time.time() - tl
+            if gi == 0:  # result ring, shaped by the first group's outputs (one-off, before steady stats)
+                shapes = {f'L{l}': (acc[l].shape[1:], acc[l].dtype) for l in layers}
+                shapes[f'S{summary_layer}'] = (acc[summary_layer].shape[1:], torch.float16)
+                rows = {k: (-(-max_cells // M.SUMMARY_CELLS) if k.startswith('S') else max_cells) for k in shapes}
+                for _ in range(out_slots):
+                    out_free.put({k: torch.empty((rows[k], *sh), dtype=dt, pin_memory=cuda) for k, (sh, dt) in shapes.items()})
             tp = time.time()
             off = 0
             for sha, pl in zip(g, plans):
                 arrays = [(f'L{l}', acc[l][off:off + pl.cells]) for l in layers]
                 arrays.append((f'S{summary_layer}', summary_half(acc[summary_layer][off:off + pl.cells])))
                 off += len(pl.starts) * CENTRE_CELLS
+                if pl.cells <= max_cells:
+                    tw = time.time()
+                    slot = out_free.get()  # back-pressure: waits only when every result slot is still being written
+                    host_t['wait_writer'] += time.time() - tw
+                    bufs = slot
+                else:
+                    slot, bufs = None, {k: torch.empty(t.shape, dtype=t.dtype, pin_memory=cuda) for k, t in arrays}
+                    stats['fallback_buffers'] += 1
                 host = []
                 for name, t in arrays:
-                    h = torch.empty(t.shape, dtype=t.dtype, pin_memory=cuda)
+                    h = bufs[name][:t.shape[0]]
                     h.copy_(t, non_blocking=cuda)
                     host.append((name, h))
                 ev = torch.cuda.Event() if cuda else _NoEvent()
                 ev.record()
-                pending.append(writer.submit(write_after, ev, sha, host))
+                pending.append(writer.submit(write_after, ev, sha, host, slot))
                 stats['songs'] += 1
                 stats['windows'] += len(pl.starts)
             host_t['post'] += time.time() - tp
-            if gi == 0:  # first group carries one-off costs (compile/capture warm-up): steady stats start here
+            if gi == 0:  # first group carries one-off costs (compile/capture warm-up, ring allocation)
                 if cuda:
                     torch.cuda.synchronize()
                 if on_first_group:
@@ -198,7 +243,7 @@ def run(work, load_mel, save, runner, layers, *, group=4, writers=6, device='cud
                 t_steady, w_steady = time.time(), stats['windows']
                 for k in host_t:
                     host_t[k] = 0.0
-            drain(max_pending)
+            collect(False)  # surfaces writer errors early
             if guard and gi > 0:
                 reason = guard(time.time() - t_steady, stats['windows'] - w_steady)
                 if reason:
@@ -213,9 +258,11 @@ def run(work, load_mel, save, runner, layers, *, group=4, writers=6, device='cud
     if on_steady_end:
         on_steady_end()
     tf = time.time()
-    drain(0)
+    collect(True)
     stats['flush_s'] = round(time.time() - tf, 1)
     stats['write_MBps_per_thread'] = round(stats['bytes'] / 1e6 / max(stats['write_s'], 1e-9), 1)
-    reader.shutdown()
+    for f in futs:  # prefetched groups not consumed after an early stop: release their slots
+        f.cancel()
+    reader.shutdown(wait=True, cancel_futures=True)
     writer.shutdown()
     return stats

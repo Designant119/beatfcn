@@ -238,7 +238,7 @@ def layer_probe(train_rows: list, val_rows: list, epochs: int = 2, batch: int = 
 
 @app.function(image=gpu_image, gpu=GPU, volumes={WEIGHTS: weights, DATA: data}, cpu=8.0, memory=32768, timeout=3600)
 def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 32, pca: str = '', quant: bool = False,
-                 group: int = 4, mode: str = 'auto', writers: int = 6, probe_batches: int = 16,
+                 group: int = 4, mode: str = 'auto', writers: int = 8, probe_batches: int = 16,
                  min_util: float = 0.0, check_after_s: float = 20.0):
     """Write taps/{key}/{sha}/L{l}.npy and S20.npy (2 s means of layer 20, full width, float16).
 
@@ -310,7 +310,7 @@ def encode_songs(shas: list, layers: list, taps_key: str, batch: int = 32, pca: 
                 return None
             u = mon.peek()
             return None if u is None or u >= min_util else f'steady GPU util {u}% < {min_util}% after {secs:.0f} s ({wins / secs:.1f} windows/s)'
-        stats = P.run(work, lambda sha: np.load(f'{DATA}/mel10/{sha}.npy').astype(np.float32), save, runner, layers,
+        stats = P.run(work, lambda sha: np.load(f'{DATA}/mel10/{sha}.npy'), save, runner, layers,
                       group=group, writers=writers, device='cuda', on_first_group=mon.take,
                       on_steady_end=lambda: util.update(mon.take()), guard=guard)
     data.commit()  # Modal also commits in the background every few seconds; never from the main loop
@@ -370,7 +370,7 @@ def run_probe(rows_json: str, out: str = 'reports/layer_probe.json', epochs: int
 @app.local_entrypoint()
 def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24', per_container: int = 200, pca: str = '',
            quant: bool = False, gpu: str = '', batch: int = 32, limit: int = 0, group: int = 4, offset: int = 0,
-           mode: str = 'auto', writers: int = 6, cpu: float = 0, timeout: int = 0, min_util: float = 0.0):
+           mode: str = 'auto', writers: int = 8, cpu: float = 0, timeout: int = 0, min_util: float = 0.0):
     """Encode songs listed (one sha per line) in parallel containers; idempotent. gpu overrides the
     container GPU (encoding is volume-bound, so cheaper GPUs can win per song); limit: first N songs only."""
     shas = [s.strip() for s in Path(shas_file).read_text().split() if s.strip()]
@@ -382,7 +382,7 @@ def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24
     t = time.time()
     res = list(fn.starmap([(c, ls, taps_key, batch, pca, quant, group, mode, writers, 16, min_util) for c in chunks]))
     keys = ('mode', 'probe', 'steady_util', 'steady_windows_per_s', 'steady_host_s', 'flush_s', 'write_MBps_per_thread', 'gpu',
-            'aborted')
+            'aborted', 'fallback_buffers')
     print(json.dumps({'chunks': len(chunks), 'songs': sum(r['songs'] for r in res), 'windows': sum(r['windows'] for r in res),
                       'container_s': round(sum(r['seconds'] for r in res), 1), 'wall_s': round(time.time() - t, 1),
                       'per_container': [{k: r.get(k) for k in keys} for r in res]}, indent=1))
