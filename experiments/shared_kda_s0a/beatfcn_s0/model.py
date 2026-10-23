@@ -22,6 +22,7 @@ class Config:
     global_max_tokens: int = 600
     max_groups: int = 256
     max_prefix: int = 1536
+    density_enabled: bool = True  # density control toggle: True=follow density range, False=freely generate
 
 @dataclass
 class Context:
