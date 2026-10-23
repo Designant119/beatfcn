@@ -204,7 +204,7 @@ def collate_meta(examples: list[F.CoreExample], infos: list[SongInfo], taps: tup
             breaks = np.flatnonzero(np.diff(cells[order]) > 200) + 1  # one contiguous read per reference cluster
             for grp in np.split(order, breaks):
                 lo, hi = int(cells[grp].min()), int(cells[grp].max()) + 1
-                recipe['ref_reads'].append((b, grp.tolist(), lo, hi, (cells[grp] - lo).tolist()))
+                recipe['ref_reads'].append((b, torch.from_numpy(grp.copy()), lo, hi, torch.from_numpy((cells[grp] - lo).copy())))
         out['controls'][b] = torch.from_numpy(ex.controls)
         out['allowed_types'][b] = torch.from_numpy(ex.allowed_types)
         out['lines'][b] = ex.lines
@@ -323,8 +323,8 @@ def attach_audio(bt: dict, get_song, device='cpu', scales=None) -> dict:
             cnt = torch.clamp(sm.shape[0] - torch.arange(n, device=sm.device) * k, max=k).float()
             summary[b, :n] = (padded.reshape(n, k, *sm.shape[1:]).sum(1) / cnt[:, None, None]).to(torch.float16)
     for b, grp, lo, hi, rel in r['ref_reads']:
-        gi = torch.tensor(grp, device=dev)
-        ri = torch.tensor(rel, device=dev)
+        gi = torch.as_tensor(grp).to(dev, non_blocking=True)
+        ri = torch.as_tensor(rel).to(dev, non_blocking=True)
         for j, l in enumerate(taps):
             span = torch.zeros(hi - lo, 8, Dt, dtype=tdt, device=dev)
             _dslice(songs[b].taps[l], lo, hi - lo, span)
@@ -335,8 +335,11 @@ def attach_audio(bt: dict, get_song, device='cpu', scales=None) -> dict:
     bt['audio'], bt['mel'], bt['summary'], bt['ref_audio'] = audio, mel, summary, ref_audio
     bt['hold_blocks'], bt['hold_detail'] = blocks, detail
     if quant:  # per-tap dequantisation scale [T, Dt]; applied on the device by dequant()
-        sc = [torch.broadcast_to(torch.as_tensor(np.asarray(scales[l], np.float32)), (Dt,)) for l in taps]
-        bt['tap_scale'] = torch.stack(sc).clone().to(dev)
+        if torch.is_tensor(scales):  # already stacked [T, Dt] on the device (training loop caches it)
+            bt['tap_scale'] = scales
+        else:
+            sc = [torch.broadcast_to(torch.as_tensor(np.asarray(scales[l], np.float32)), (Dt,)) for l in taps]
+            bt['tap_scale'] = torch.stack(sc).clone().to(dev)
         bt['tap_top'] = taps.index(top)
     return bt
 

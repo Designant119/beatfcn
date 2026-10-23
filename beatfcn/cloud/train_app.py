@@ -324,6 +324,10 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         log_all({'event': 'pool_capacity', 'requested': pool_songs, 'raised_to': need, 'workers': workers, 'modes': n_modes, 'per_worker': pool_per_worker})
         pool_songs = need
     pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs)
+    scale_dev = None  # per-tap int8 scales once on the device: no per-batch host->device copy in attach_audio
+    if corpus.quant:
+        scale_dev = torch.stack([torch.broadcast_to(torch.as_tensor(np.asarray(corpus.scale[l], np.float32)), (corpus.tap_dim,))
+                                 for l in taps]).clone().to(dev)
     raw_it, queue = iter(stream), deque()
     worker_audits = {}
     samples_file = open(f'{runs[0].dir}/samples.jsonl', 'a')
@@ -340,7 +344,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         if audit:
             worker_audits[audit['worker']] = audit['attempts']
         keys = list(b['_audio']['keys'])
-        attach_audio(b, pool.get, device, corpus.scale if corpus.quant else None)
+        attach_audio(b, pool.get, device, scale_dev)
         pool.release(keys)
         samples_file.write(json.dumps(b.pop('_provenance', [])) + '\n')
         return b, sk

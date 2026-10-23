@@ -76,6 +76,9 @@ class TieredStep:
                 else:  # padded axis: reset to collate's padding value, copy the real rows
                     pad = bt['mode'].shape[0] * tier.spec['G'] - 1 if k == 'inner_index' else PAD_VALUE.get(k, 0)
                     s.fill_(pad)  # inner_index: the last group slot, invalid by tier choice
+                    if k == 'inner_index':  # flat (b * G + g) indices: re-encode for the tier's G (review finding 1)
+                        Gd = bt['grp_valid'].shape[1]
+                        v = (v // Gd) * tier.spec['G'] + v % Gd
                     s[tuple(slice(0, n) for n in v.shape)].copy_(v, non_blocking=True)
             buf['w_select'].fill_(w_select)
 
@@ -146,12 +149,22 @@ class TieredStep:
             if self.before_capture:
                 self.before_capture()
             torch.cuda.synchronize()
-            tier.graph = torch.cuda.CUDAGraph()
-            # thread_local: the DataLoader pin-memory thread and the SongPool loaders keep making CUDA calls
-            # (cudaHostAlloc, copies) in other threads; in the default 'global' mode any of them invalidates
-            # the capture (second baseline attempt failed exactly so)
-            with torch.cuda.graph(tier.graph, capture_error_mode='thread_local'):
-                tier.out = self._body(tier.slots)
+            graph = torch.cuda.CUDAGraph()
+            try:
+                # thread_local: the DataLoader pin-memory thread and the SongPool loaders keep making CUDA calls
+                # (cudaHostAlloc, copies) in other threads; in the default 'global' mode any of them invalidates
+                # the capture (second baseline attempt failed exactly so)
+                with torch.cuda.graph(graph, capture_error_mode='thread_local'):
+                    out = self._body(tier.slots)
+            except Exception as exc:  # a failed capture degrades this run to eager instead of killing it
+                torch.cuda.synchronize()
+                for r in self.runs:
+                    r.opt.zero_grad(set_to_none=False)
+                self.max_graphs = ti  # never try to capture this tier (or larger) again
+                self.stats['capture_failed'] = repr(exc)[:300]
+                self.stats['eager_steps'] += 1
+                return self._eager(tier.slots)
+            tier.graph, tier.out = graph, out
             self.stats['captures'] += 1
             # the capture itself did not run: replay once for this batch
         tier.graph.replay()

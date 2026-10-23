@@ -716,6 +716,8 @@ class P1Model(nn.Module):
             l_sel = 0.5 * ((bce * pos).sum() / n_pos.clamp(min=1) + (bce * neg).sum() / n_neg.clamp(min=1)) * both
             hit = (((s_core > 0) == pos) & (pos | neg)).sum() * both
             m['select'] = (l_sel * bt.get('w_select', 1.0), (n_pos + n_neg) * both, hit, torch.zeros_like(hit))
+        if self.training:
+            self._intent_h = None  # no autograd graph kept alive across steps (stale-stream capture hazard)
         t_prev = torch.cat([torch.full((B, 1), -0.001, device=dev), bt['grp_t']], 1)
         logits, mask, ok = self.time_logits(bt, h, ptr_audio, fine, t_prev)
         row_valid = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=dev), bt['grp_valid']], 1)

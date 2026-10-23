@@ -127,6 +127,25 @@ class TieredStepTests(unittest.TestCase):
                 self.assertEqual(int(ma[k][1]), int(mb[k][1]), k)
                 self.assertEqual(int(ma[k][2]), int(mb[k][2]), k)
 
+    def test_tier_padding_preserves_losses_with_compact_inner(self):
+        from beatfcn.model.batch import prepare_inner_indices
+        from beatfcn.train.graph import TieredStep
+        bt = prepare_inner_indices(self._dyn(3, 4))
+        torch.manual_seed(0)
+        m = P1Model(dataclasses.replace(CFG, dropout=0.0, selection=True, compact_inner=True)).eval()
+        ts = TieredStep([_Run(m, torch.optim.AdamW(m.parameters(), lr=1e-3))], 1.0, 'cpu', capture=False)
+        tier = ts.tiers[1]
+        ts._alloc(tier, [bt])
+        ts._fill(tier, [bt], 0.2)
+        with torch.no_grad():
+            la, ma = m(dict(bt, w_select=0.2))
+            lb, mb = m(dict(tier.slots[0]))
+        self.assertAlmostEqual(float(la), float(lb), places=4)
+        for k in ma:
+            if k != '_illegal':
+                self.assertEqual(int(ma[k][1]), int(mb[k][1]), k)
+                self.assertEqual(int(ma[k][2]), int(mb[k][2]), k)
+
     def test_eager_tiered_step_equals_plain_accumulation(self):
         from beatfcn.train.graph import TieredStep
         batches = [self._dyn(2, 11), self._dyn(3, 12)]
