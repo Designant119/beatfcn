@@ -33,26 +33,34 @@ def _audit_corpus(corpus_args, rows):
     return c
 
 
-def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap):
+def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True):
+    """Training micro-batches. meta=True (training): workers build only the metadata (collate_meta,
+    ~50 KB per core; songs are never read by workers) and the main process attaches audio from a
+    GPU-resident SongPool. meta=False: full CPU collate with whole songs read in the worker."""
     import torch
     from beatfcn.train.data import Corpus
     from beatfcn.train.loop import CoreSampler
-    from beatfcn.model.batch import collate
+    from beatfcn.model.batch import collate, collate_meta
 
     class Stream(torch.utils.data.IterableDataset):
         def __iter__(self):
             info = torch.utils.data.get_worker_info()
             wid = info.id if info else 0
             corpus = Corpus(**corpus_args)
-            smp = CoreSampler(corpus.train_rows(rows), corpus.chart, lambda sha: corpus.song(sha, in_memory=True),
-                              seed * 1000 + wid, salient=corpus.salient_us, pool=POOL, residence=RESIDENCE)
+            song_cache = corpus.song_info if meta else (lambda sha: corpus.song(sha, in_memory=True))
+            smp = CoreSampler(corpus.train_rows(rows), corpus.chart, song_cache, seed * 1000 + wid,
+                              salient=corpus.salient_us, pool=POOL, residence=RESIDENCE)
             from beatfcn.model import features as F
+            Dt, quant = corpus.tap_dim, corpus.quant
             while True:
                 items = []
                 while len(items) < micro_batch:  # 4 cores per song bucket -> 2+ songs per microbatch
                     items += smp.draw(min(4, micro_batch - len(items)))
                 try:
-                    bt = collate([a for a, _ in items], [b for _, b in items], taps, top_tap)
+                    if meta:
+                        bt = collate_meta([a for a, _ in items], [b for _, b in items], taps, top_tap, Dt, 1024, quant)
+                    else:
+                        bt = collate([a for a, _ in items], [b for _, b in items], taps, top_tap)
                 except F.SkipExample as exc:  # never let one core take the worker (and the run) down
                     key = 'collate:' + str(exc)[:40]
                     smp.skipped[key] = smp.skipped.get(key, 0) + 1
@@ -199,7 +207,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
-          device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = ''):
+          device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = '',
+          pool_songs: int = 160, prefetch: int = 6):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
@@ -245,7 +254,29 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed, micro_batch, tuple(taps), max(taps)),
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
                                          pin_memory=device == 'cuda')
-    it = iter(stream)
+    from collections import deque
+    from beatfcn.model.batch import attach_audio
+    from beatfcn.train.pool import SongPool
+    pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs)
+    raw_it, queue = iter(stream), deque()
+
+    def next_batch():
+        """Prefetch `prefetch` metadata batches so their songs load in the background, then attach audio
+        on the device for the oldest one."""
+        while len(queue) < prefetch:
+            b, sk = next(raw_it)
+            pool.request(b['_audio']['keys'])
+            queue.append((b, sk))
+        b, sk = queue.popleft()
+        keys = list(b['_audio']['keys'])
+        attach_audio(b, pool.get, device, corpus.scale if corpus.quant else None)
+        pool.release(keys)
+        return b, sk
+
+    class _It:
+        def __next__(self):
+            return next_batch()
+    it = _It()
     t0 = time.time()
     if prepped is not None:
         if prepped['n_train'] != len(train_rows) or prepped['n_val'] != len(val_rows):
@@ -334,6 +365,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         if (step + 1) % tc.log_every == 0:
             shared = {'step': step + 1, 'lr': lr_at(step, tc), 'examples': examples, 'data_wait_s': round(wait_s, 1),
                       'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
+                      'pool': {k: (round(v, 1) if isinstance(v, float) else v) for k, v in pool.stats.items()},
+                      'pool_gb': round(pool.resident_bytes() / 1e9, 2),
                       'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2) if cuda else None,
                       'gpu_util': mon.take()['util_mean'], 'skipped': skipped}
             for r in runs:

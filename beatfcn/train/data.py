@@ -178,6 +178,36 @@ class Corpus:
     def mel(self, sha):
         return np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode='r')
 
+    def song_info(self, sha):
+        """Shape-only description for batch.collate_meta (workers never read the tap cache): cell and
+        summary counts follow the encoder's window plan from the mel frame count."""
+        from ..audio.memory import plan, SUMMARY_CELLS
+        from ..model.batch import SongInfo
+        frames = np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode='r').shape[0]
+        cells = plan(frames).cells
+        return SongInfo(sha, cells, -(-cells // SUMMARY_CELLS))
+
+    @property
+    def tap_dim(self):
+        if not hasattr(self, '_tap_dim'):
+            sha = next(iter(os.listdir(os.path.join(self.root, 'taps', self.taps_key))))
+            self._tap_dim = np.load(os.path.join(self.root, 'taps', self.taps_key, sha, f'L{self.layers[0]}.npy'), mmap_mode='r').shape[-1]
+        return self._tap_dim
+
+    @property
+    def quant(self):
+        return bool(self.scale)
+
+    def load_numpy(self, sha):
+        """Whole-song arrays for a SongPool: raw int8 taps (dequantised on the device), summary, mel."""
+        base = os.path.join(self.root, 'taps', self.taps_key, sha)
+        paths = [os.path.join(base, f'L{l}.npy') for l in self.layers] + [os.path.join(base, 'S20.npy'),
+                                                                          os.path.join(self.root, 'mel10', f'{sha}.npy')]
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(len(paths)) as ex:
+            arrs = list(ex.map(np.load, paths))
+        return dict(zip(self.layers, arrs[:-2])), arrs[-2], arrs[-1]
+
     def song(self, sha, in_memory=False) -> SongCache:
         """Memmapped by default: a core reads a few contiguous slices (16 s local audio, one reference
         range, end blocks), far less than whole-song reads. in_memory=True loads whole files with one

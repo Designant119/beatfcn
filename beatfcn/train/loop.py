@@ -87,11 +87,9 @@ class CoreSampler:
         if len(slots) < min(self.pool, len(names)):
             sha = names[self.rng.integers(len(names))]
             cache = self.song_cache(sha)
-            if self.salient:  # prime the peak cache from the resident mel (no second read)
-                try:
-                    self.salient(sha, mel=cache.mel10)
-                except TypeError:
-                    pass
+            if self.salient:  # prime the peak cache from the resident mel when the cache carries one
+                mel = getattr(cache, 'mel10', None)
+                self.salient(sha, mel=mel) if mel is not None else self.salient(sha)
             slots.append([sha, cache, 0])
         k = int(self.rng.integers(len(slots)))
         slot = slots[k]

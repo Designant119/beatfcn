@@ -65,3 +65,27 @@ class TransportTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PoolTests(unittest.TestCase):
+    def test_meta_plus_pool_attach_matches_cpu_collate(self):
+        """collate_meta in a worker + attach_audio from a SongPool (CPU device here) == collate."""
+        from beatfcn.model.batch import collate_meta, attach_audio, SongInfo
+        from beatfcn.train.pool import SongPool
+        quant, flt = songs_pair(3)
+        exs = examples(5)
+        ref = collate(exs, [quant] * len(exs), CFG.taps, CFG.top_tap)
+        infos = [SongInfo('s0', quant.taps[CFG.taps[0]].shape[0], quant.summary.shape[0])] * len(exs)
+        bt = collate_meta(exs, infos, CFG.taps, CFG.top_tap, 32, 32, True)
+        self.assertLess(sum(v.numel() * v.element_size() for v in bt.values() if torch.is_tensor(v)), 2_000_000)
+        loader = lambda sha: ({l: quant.taps[l].raw for l in CFG.taps}, quant.summary, quant.mel10)
+        pool = SongPool(loader, CFG.taps, 'cpu', capacity=2)
+        pool.request(['s0'])
+        attach_audio(bt, pool.get, 'cpu', {l: quant.taps[l].scale for l in CFG.taps})
+        pool.release(['s0'])
+        self.assertEqual(set(bt), set(ref))
+        for k in ref:
+            if torch.is_tensor(ref[k]):
+                self.assertEqual(ref[k].dtype, bt[k].dtype, k)
+                self.assertTrue(torch.equal(ref[k], bt[k]), k)
+        self.assertEqual(pool.stats['loads'], 1)
