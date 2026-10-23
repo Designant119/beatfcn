@@ -88,6 +88,18 @@ class PoolTests(unittest.TestCase):
 
 
 class SamplerRejectsOversizedGroups(unittest.TestCase):
+    def test_fixed_by_song_groups_validation_cores_by_song(self):
+        from beatfcn.train.loop import CoreSampler
+        from events_helpers import synthetic_mania, DURATION
+        chart = synthetic_mania(0)
+        rows = [{'chart_id': f'c{i}', 'song': f's{i % 2}', 'mode': 'mania_4k', 'duration_us': DURATION} for i in range(4)]
+        smp = CoreSampler(rows, lambda cid: chart, lambda sha: object(), 0)
+        val = smp.fixed_by_song(2, 3, 1)
+        self.assertEqual(len(val), 6)
+        self.assertEqual(sorted(sum(s == sha for _, s in val) for sha in ('s0', 's1')), [3, 3])
+        again = smp.fixed_by_song(2, 3, 1)  # reproducible
+        self.assertEqual([(e.c0_us, s) for e, s in val], [(e.c0_us, s) for e, s in again])
+
     def test_core_with_more_than_max_notes_is_skipped_not_crashed(self):
         from unittest import mock
         from beatfcn.train.loop import CoreSampler

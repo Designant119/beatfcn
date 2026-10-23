@@ -202,6 +202,14 @@ def _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_s
     return train_rows, val_rows, info
 
 
+def _fixed_val(vsmp, val_cores, val_songs):
+    """Validation cores: val_songs songs x (val_cores // val_songs) cores, their audio pinned in the device pool
+    for the whole run; val_songs=0 keeps the historical one-core-per-random-chart draw."""
+    if val_songs:
+        return vsmp.fixed_by_song(val_songs, val_cores // val_songs, 20261022)
+    return vsmp.fixed(val_cores, 20261022)
+
+
 def _prep_key(**kw):
     import hashlib
     return hashlib.sha256(json.dumps(kw, sort_keys=True, default=str).encode()).hexdigest()[:16]
@@ -209,7 +217,8 @@ def _prep_key(**kw):
 
 @app.function(image=image, volumes={DATA: data}, cpu=8.0, memory=32768, timeout=3600)
 def prep_train(taps_key: str, taps: tuple, pca: str = '', whiten: bool = False, songs_file: str = '', max_train_songs: int = 0,
-               val_songs_file: str = '', val_cores: int = 256, audit: bool = True, manifest_name: str = 'charts.jsonl'):
+               val_songs_file: str = '', val_cores: int = 256, audit: bool = True, manifest_name: str = 'charts.jsonl',
+               val_songs: int = 0):
     """CPU-only start-up work for train(): the fixed validation cores and the counterfactual pair audit,
     saved under /data/prep/<key>.pt. train() loads them, so the GPU container starts stepping within
     seconds instead of idling ~2 minutes (measured: 68 s val build + 54 s audit) per launch."""
@@ -220,13 +229,13 @@ def prep_train(taps_key: str, taps: tuple, pca: str = '', whiten: bool = False, 
     train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file, manifest_name)
     key = _prep_key(taps_key=taps_key, taps=list(taps), pca=pca, whiten=whiten, songs_file=songs_file,
                     max_train_songs=max_train_songs, val_songs_file=val_songs_file, val_cores=val_cores, audit=audit,
-                    rows_sha256=info['rows_sha256'])
+                    rows_sha256=info['rows_sha256'], **({'val_songs': val_songs} if val_songs else {}))
     path = f'{DATA}/prep/{key}.pt'
     if os.path.exists(path):
         return {'key': key, 'cached': True}
     corpus = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
     vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
-    val = vsmp.fixed(val_cores, 20261022)
+    val = _fixed_val(vsmp, val_cores, val_songs)
     if len(val) != val_cores or not val:
         raise ValueError(f'validation preparation produced {len(val)} of {val_cores} requested cores')
     t_val = time.time() - t0
@@ -248,7 +257,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
           device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = '',
           pool_songs: int = 160, prefetch: int = 6, graph: bool = False, manifest_name: str = 'charts.jsonl',
-          pool_per_worker: int = POOL, max_graphs: int = 2):
+          pool_per_worker: int = POOL, max_graphs: int = 2, val_songs: int = 0, loaders: int = 8):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
@@ -266,7 +275,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
     from beatfcn.train.data import Corpus
-    from beatfcn.train.loop import CoreSampler, TrainConfig, evaluate, lr_at, merge, summarize, to_device
+    from beatfcn.train.loop import CoreSampler, TrainConfig, evaluate, evaluate_pool, lr_at, merge, summarize, to_device
     from beatfcn.cloud.gpu_util import GpuUtil
 
     class Run:
@@ -323,7 +332,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     if pool_songs < need:
         log_all({'event': 'pool_capacity', 'requested': pool_songs, 'raised_to': need, 'workers': workers, 'modes': n_modes, 'per_worker': pool_per_worker})
         pool_songs = need
-    pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs)
+    pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs, loaders=loaders)
     scale_dev = None  # per-tap int8 scales once on the device: no per-batch host->device copy in attach_audio
     if corpus.quant:
         scale_dev = torch.stack([torch.broadcast_to(torch.as_tensor(np.asarray(corpus.scale[l], np.float32)), (corpus.tap_dim,))
@@ -358,13 +367,18 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         val, val_build_s = prepped['val'], 0.0
     else:
         vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
-        val = vsmp.fixed(val_cores, 20261022)
+        val = _fixed_val(vsmp, val_cores, val_songs)
         val_build_s = round(time.time() - t0, 1)
     log_all({'event': 'data', 'train_charts': len(train_rows), 'train_songs': len({r['audio_sha256'] for r in train_rows}),
              'val_charts': len(val_rows), 'val_cores': len(val), 'val_build_s': val_build_s, 'prep': prep or None,
              'dup_collapsed_charts': dup_rows, 'dup_ineligible_dropped': info['dup_ineligible_dropped'],
              'paired_runs': [r.id for r in runs], 'modes': {m: sum(r['mode'] == m for r in train_rows) for m in ('mania_4k', 'phira')}})
     log_all({'event': 'data_identity', **info, 'samples_file': f'{runs[0].dir}/samples.jsonl'})
+    val_shas = sorted({s for _, s in val})  # validation audio: resident for the whole run (requested, never released)
+    pool.capacity += len(val_shas)
+    pool.request(val_shas)
+    val_info = {s: corpus.song_info(s) for s in val_shas}
+    log_all({'event': 'val_pinned', 'songs': len(val_shas), 'cores': len(val), 'loaders': loaders})
     dev = torch.device(device)
     cuda = dev.type == 'cuda'
     for r in runs:
@@ -498,7 +512,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                 break
         if (step + 1) % tc.validate_every == 0 or step + 1 in (tc.steps, end):
             for r in runs:
-                v = evaluate(r.model, val, corpus.song, r.mc, dev, micro_batch)
+                v = evaluate_pool(r.model, val, val_info.__getitem__, pool.get, dev, micro_batch, corpus.quant, scale_dev)
                 r.log({'event': 'val', 'step': step + 1, **v})
                 if r.best is None or v['total'] < r.best:
                     r.best = v['total']
@@ -900,7 +914,7 @@ def sweep(configs: str):
         if c.pop('prep', False):  # CPU-only start-up work first; the GPU container then starts stepping at once
             need_audit = any(bool((v or {}).get('selection')) for v in [c.get('variant')] + [a.get('variant') for a in c.get('also', [])])
             pk = {k: c.get(k, d) for k, d in (('pca', ''), ('whiten', False), ('songs_file', ''), ('max_train_songs', 0),
-                                              ('val_songs_file', ''), ('val_cores', 256), ('manifest_name', 'charts.jsonl'))}
+                                              ('val_songs_file', ''), ('val_cores', 256), ('manifest_name', 'charts.jsonl'), ('val_songs', 0))}
             r = prep_train.remote(c['taps_key'], tuple(c['taps']), audit=need_audit, **pk)
             print(c['run_id'], 'prep', json.dumps(r)[:300])
             c['prep'] = r['key']

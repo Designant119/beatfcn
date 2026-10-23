@@ -47,6 +47,9 @@ def summarize(records):
             by_core.setdefault(r['core'], []).append((band_mid(r['requested']), r['achieved']))
         mono = [sorted(v)[0][1] < sorted(v)[-1][1] and all(a[1] <= b[1] for a, b in zip(sorted(v), sorted(v)[1:]))
                 for v in by_core.values() if len(v) >= 3]
+        # response judged WITHIN cores: the pooled requested-vs-achieved correlation is inflated by the spread of
+        # true values across cores (a dense core gets a high requested band and a high achieved value regardless)
+        within = [c for c in (spearman([a for a, _ in v], [b for _, b in v]) for v in by_core.values() if len(v) >= 3) if c is not None]
         per_band = {}
         for r in valid:
             per_band.setdefault(tuple(r['requested']), []).append(r['achieved'])
@@ -54,9 +57,10 @@ def summarize(records):
             'pairs': len(valid), 'cores': len(by_core),
             'in_band_rate': round(in_band / max(len(valid), 1), 3),
             'spearman_requested_vs_achieved': None if corr is None else round(corr, 3),
+            'within_core_spearman': round(float(np.mean(within)), 3) if within else None,
             'monotonic_rate': round(sum(mono) / max(len(mono), 1), 3) if mono else None,
             'mean_achieved_by_requested_band': {f'{lo}-{hi}': round(float(np.mean(v)), 3) for (lo, hi), v in sorted(per_band.items())},
             'illegal_cores': sum(not r['legal'] for r in rs),
-            'usable': corr is not None and corr >= 0.5 and in_band / max(len(valid), 1) >= 0.3,
+            'usable': bool(mono) and sum(mono) / len(mono) >= 0.6 and in_band / max(len(valid), 1) >= 0.3,
         }
     return out

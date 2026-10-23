@@ -1,6 +1,6 @@
 [
  {
-  "run_id": "baseline-v2-graph",
+  "run_id": "baseline-v3-graph",
   "steps": 500,
   "micro_batch": 8,
   "accumulation": 4,
@@ -13,7 +13,7 @@
   "tap_dim": 1024,
   "pca": "i8_9-16-24",
   "workers": 30,
-  "val_cores": 128,
+  "val_cores": 120,
   "warmup": 100,
   "validate_every": 250,
   "variant": {
@@ -24,8 +24,8 @@
   "pool_songs": 160,
   "prefetch": 6,
   "graph": true,
-  "min_util": 0.0,
-  "check_after_s": 240.0,
+  "min_util": 60.0,
+  "check_after_s": 300.0,
   "manifest_name": "charts.offset-v2-3d99ff6bd5e7.jsonl",
   "prep": true,
   "resources": {
@@ -35,6 +35,8 @@
    "timeout": 1500
   },
   "pool_per_worker": 3,
-  "max_graphs": 2
+  "max_graphs": 3,
+  "val_songs": 24,
+  "loaders": 12
  }
 ]

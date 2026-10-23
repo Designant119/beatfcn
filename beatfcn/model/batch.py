@@ -64,10 +64,12 @@ STATIC = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': STATIC_CORE['hol
 # CUDA-graph shape tiers (train.graph.TieredStep): a dynamic batch is padded up to the smallest tier that
 # holds it; batches beyond the last tier run eagerly. Padding only adds rows every loss already masks
 # (valid flags false, hold_valid false), so no sample is dropped and no summary is pooled differently.
-TIERS = [
-    {'G': 64, 'K': 128, 'R': 128, 'A': 16, 'S': 128, 'H': 192},
-    {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': 512},
-    {'G': 256, 'K': 512, 'R': 256, 'A': 32, 'S': 640, 'H': 1536},
+TIERS = [  # shape tiers for micro-batch 8, from 1000 random 8-core batches of the validation cores (2026-10-23):
+    # tier 0 holds ~95% of them (largest seen: G 160, K 256, R 256, S 320, H 320, N 521); tiers 1-2 take the
+    # dense / long-song rest; beyond tier 2 the step runs eagerly. Compaction needs G strictly below the tier's.
+    {'G': 192, 'K': 256, 'R': 256, 'A': 16, 'S': 320, 'H': 320},
+    {'G': 256, 'K': 384, 'R': 256, 'A': 32, 'S': 448, 'H': 640},
+    {'G': 320, 'K': 512, 'R': 256, 'A': 32, 'S': 640, 'H': 1024},
 ]
 # which padded axis each batch key grows along (everything else has a fixed shape per micro-batch size)
 AXIS = {**{k: ('G', 1) for k in ('grp_valid', 'grp_t', 'grp_bin', 'grp_res', 'grp_copy', 'grp_n', 'busy', 'right_new',

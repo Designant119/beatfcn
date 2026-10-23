@@ -170,6 +170,34 @@ class CoreSampler:
                 continue
         return out
 
+    def fixed_by_song(self, n_songs, per_song, seed, max_tries=None):
+        """n_songs distinct songs x per_song reproducible cores each: a validation set whose audio stays resident
+        in the device pool for the whole run (128 cores from 114 songs cost one cold volume read per song per
+        validation: minutes at 0% GPU). Songs are drawn per mode with the training mode weights."""
+        rng, out = np.random.default_rng(seed), []
+        left = {m: sorted(self.by_mode[m]) for m in self.modes}
+        for m in left:
+            rng.shuffle(left[m])
+        picked = 0
+        while picked < n_songs and any(left.values()):
+            m = self.modes[rng.choice(len(self.modes), p=self.mode_p)]
+            if not left[m]:
+                continue
+            sha = left[m].pop()
+            rows = sorted(self.by_mode[m][sha], key=lambda r: r['chart_id'])
+            got, tries = [], 0
+            while len(got) < per_song and tries < (max_tries or 50 * per_song):
+                tries += 1
+                row = rows[rng.integers(len(rows))]
+                try:
+                    got.append((self.core(row, int(rng.integers(2 ** 31))), sha))
+                except (F.SkipExample, ValueError, AssertionError):
+                    continue
+            if len(got) == per_song:
+                out += got
+                picked += 1
+        return out
+
 
 def lr_at(step, c: TrainConfig):
     if step < c.warmup:
@@ -220,6 +248,30 @@ def evaluate(model, cores, song_cache, cfg_model, dev, micro_batch):
         with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=dev.type == 'cuda'):
             _, met = model(bt)
         merge(acc, met)
+    model.train()
+    out = summarize(acc)
+    out['total'] = round(sum(v['loss'] for v in out.values()), 4)
+    return out
+
+
+def evaluate_pool(model, cores, song_info, get_song, dev, micro_batch, quant, scales=None):
+    """evaluate() over a SongPool: metadata collate, audio attached on the device from resident songs. A
+    validation then reads nothing from the volume (the memmap path read ~108 MB per song, 114 songs)."""
+    from ..model.batch import collate_meta, attach_audio, prepare_inner_indices
+    c = model.c
+    model.eval()
+    acc = {}
+    with torch.no_grad():
+        for i in range(0, len(cores), micro_batch):
+            chunk = cores[i:i + micro_batch]
+            bt = collate_meta([e for e, _ in chunk], [song_info(s) for _, s in chunk], c.taps, c.top_tap, c.tap_dim, 1024, quant)
+            if getattr(c, 'compact_inner', False) and 'inner_index' not in bt:
+                bt = prepare_inner_indices(bt)
+            attach_audio(bt, get_song, dev, scales)
+            bt = {k: (v.to(dev, non_blocking=True) if torch.is_tensor(v) else v) for k, v in bt.items()}
+            with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=dev.type == 'cuda'):
+                _, met = model(bt)
+            merge(acc, met)
     model.train()
     out = summarize(acc)
     out['total'] = round(sum(v['loss'] for v in out.values()), 4)
