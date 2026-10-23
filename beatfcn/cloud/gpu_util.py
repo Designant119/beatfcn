@@ -35,6 +35,12 @@ class GpuUtil:
         s = sorted(vals)
         return {'util_mean': round(sum(vals) / len(vals), 1), 'util_p10': s[len(s) // 10], 'samples': len(vals)}
 
+    def peek(self) -> float | None:
+        """Mean utilisation since the last take(), without resetting."""
+        with self._lock:
+            vals = list(self._vals)
+        return round(sum(vals) / len(vals), 1) if vals else None
+
     def close(self):
         if self._proc:
             self._proc.terminate()

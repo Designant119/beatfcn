@@ -115,9 +115,11 @@ class _NoEvent:
 
 
 def run(work, load_mel, save, runner, layers, *, group=4, writers=6, device='cuda', summary_layer=20,
-        on_first_group=None, on_steady_end=None, max_pending=None):
+        on_first_group=None, on_steady_end=None, max_pending=None, guard=None):
     """Encode songs `work` (ids). load_mel(id) -> float32 [frames, 128]; save(id, [(name, ndarray)]) writes
-    L{l} for each cache layer and S{summary_layer} last. Returns throughput / host-time statistics."""
+    L{l} for each cache layer and S{summary_layer} last. Returns throughput / host-time statistics.
+    guard(steady_seconds, steady_windows) -> reason or None, called after each steady group: a reason
+    stops encoding early (songs already enqueued are still written completely)."""
     cuda = str(device).startswith('cuda')
     pad = torch.from_numpy(M.silence_row()).to(device, runner.static_in.dtype)
     pad_rows = pad.view(1, 1, 1, -1).expand(runner.batch, 1, M.WINDOW, pad.shape[0])
@@ -197,6 +199,11 @@ def run(work, load_mel, save, runner, layers, *, group=4, writers=6, device='cud
                 for k in host_t:
                     host_t[k] = 0.0
             drain(max_pending)
+            if guard and gi > 0:
+                reason = guard(time.time() - t_steady, stats['windows'] - w_steady)
+                if reason:
+                    stats['aborted'] = reason
+                    break
     if t_steady is not None and len(groups) > 1:  # steady phase ends with the last enqueue, before the flush
         if cuda:
             torch.cuda.synchronize()
