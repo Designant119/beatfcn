@@ -127,9 +127,9 @@ def _pair_audit(rows, corpus, n_try=600, seed=0):
             'by_mode': {m: sum(1 for k in multi if k[1] == m) for m in ('mania_4k', 'phira')}}
 
 
-@app.function(image=image, gpu='H100', volumes={DATA: data}, cpu=32.0, memory=131072, timeout=24 * 3600)
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=12.0, memory=49152, timeout=24 * 3600)
 def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: int = 4, taps_key: str = 'v1_L8-16-24',
-          taps: tuple = (8, 16, 24), workers: int = 28, val_cores: int = 256, max_train_songs: int = 0,
+          taps: tuple = (8, 16, 24), workers: int = 16, val_cores: int = 256, max_train_songs: int = 0,
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False):
@@ -332,7 +332,7 @@ def audit(n_cores: int = 3000):
     print(json.dumps({k: r[k] for k in ('rows', 'reasons', 'model_forward')}, indent=1))
 
 
-@app.function(image=image, gpu='H100', volumes={DATA: data}, cpu=8.0, memory=65536, timeout=4 * 3600)
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=8.0, memory=32768, timeout=4 * 3600)
 def eval_generation(run_id: str, n_cores: int = 200, taps_key: str = 'v1_L8-16-24', greedy: bool = False, seed: int = 20261022,
                     split: str = 'val', pca: str = ''):
     """Generate every fixed val core with the run's best checkpoint and score against hidden targets."""
@@ -469,10 +469,10 @@ def _s2_stream(rows, corpus_args, seed, micro_batch, taps, top_tap):
     return Stream()
 
 
-@app.function(image=image, gpu='H100', volumes={DATA: data, '/weights': weights_vol}, cpu=32.0, memory=131072, timeout=24 * 3600)
+@app.function(image=image, gpu='H100', volumes={DATA: data, '/weights': weights_vol}, cpu=16.0, memory=65536, timeout=24 * 3600)
 def train_s2(run_id: str, init_run: str, steps: int = 3000, micro_batch: int = 8, accumulation: int = 4,
              taps_key: str = 'v3_pca512q_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'pca512_9-16-24',
-             workers: int = 28, val_cores: int = 256, lr_event: float = 5e-5, lr_lora: float = 5e-6,
+             workers: int = 14, val_cores: int = 256, lr_event: float = 5e-5, lr_lora: float = 5e-6,
              validate_every: int = 500):
     import numpy as np
     import torch
@@ -595,7 +595,7 @@ def sweep(configs: str):
             print(rid, 'FAILED', repr(exc)[:300])
 
 
-@app.function(image=image, gpu='H100', volumes={DATA: data}, cpu=8.0, memory=65536, timeout=4 * 3600)
+@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=8.0, memory=32768, timeout=4 * 3600)
 def eval_controls(run_id: str, n_cores: int = 80, taps_key: str = 'v3_pca512q_L9-16-24', pca: str = 'pca512_9-16-24',
                   seed: int = 20261025):
     """Control sweep (design §13.2 item 5): same core generated at low/mid/high bands of one control;
