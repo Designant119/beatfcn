@@ -127,13 +127,72 @@ def _pair_audit(rows, corpus, n_try=600, seed=0):
             'by_mode': {m: sum(1 for k in multi if k[1] == m) for m in ('mania_4k', 'phira')}}
 
 
+def _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file):
+    """Manifest rows usable with this cache, split into train / val as train() sees them."""
+    from beatfcn.train.data import Corpus, load_manifest
+    tdir = f'{DATA}/taps/{taps_key}'  # S20 is written last: songs still being encoded are left out
+    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
+    rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have]
+    n0 = len(rows)
+    rows = [r for r in rows if probe.usable(r)]
+    train_rows = [r for r in rows if r['split'] == 'train']
+    if songs_file:  # restrict to a fixed song list (pilot / equivalence checks)
+        allowed = set(open(songs_file).read().split())
+        train_rows = [r for r in train_rows if r['audio_sha256'] in allowed]
+    if max_train_songs:
+        keep = sorted({r['audio_sha256'] for r in train_rows})[:max_train_songs]
+        train_rows = [r for r in train_rows if r['audio_sha256'] in set(keep)]
+    val_rows = [r for r in rows if r['split'] == 'val']
+    if val_songs_file:  # fixed validation songs so runs with different caches stay comparable
+        vallow = set(open(val_songs_file).read().split())
+        val_rows = [r for r in val_rows if r['audio_sha256'] in vallow]
+    info = {'dup_collapsed_charts': sum(1 for r in rows if not r.get('kept')), 'dup_ineligible_dropped': n0 - len(rows)}
+    return train_rows, val_rows, info
+
+
+def _prep_key(**kw):
+    import hashlib
+    return hashlib.sha256(json.dumps(kw, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+@app.function(image=image, volumes={DATA: data}, cpu=8.0, memory=32768, timeout=3600)
+def prep_train(taps_key: str, taps: tuple, pca: str = '', whiten: bool = False, songs_file: str = '', max_train_songs: int = 0,
+               val_songs_file: str = '', val_cores: int = 256, audit: bool = True):
+    """CPU-only start-up work for train(): the fixed validation cores and the counterfactual pair audit,
+    saved under /data/prep/<key>.pt. train() loads them, so the GPU container starts stepping within
+    seconds instead of idling ~2 minutes (measured: 68 s val build + 54 s audit) per launch."""
+    import torch
+    from beatfcn.train.data import Corpus
+    from beatfcn.train.loop import CoreSampler
+    t0 = time.time()
+    key = _prep_key(taps_key=taps_key, taps=list(taps), pca=pca, whiten=whiten, songs_file=songs_file,
+                    max_train_songs=max_train_songs, val_songs_file=val_songs_file, val_cores=val_cores, audit=audit)
+    path = f'{DATA}/prep/{key}.pt'
+    if os.path.exists(path):
+        return {'key': key, 'cached': True}
+    train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file)
+    corpus = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
+    vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
+    val = vsmp.fixed(val_cores, 20261022)
+    t_val = time.time() - t0
+    corpus.train_rows(train_rows)  # registers the train charts the audit loads
+    aud = _pair_audit(train_rows, corpus) if audit else None
+    os.makedirs(f'{DATA}/prep', exist_ok=True)
+    torch.save({'val': val, 'audit': aud, 'n_train': len(train_rows), 'n_val': len(val_rows), 'info': info,
+                'val_build_s': round(t_val, 1), 'audit_s': round(time.time() - t0 - t_val, 1)}, path)
+    data.commit()
+    return {'key': key, 'cached': False, 'val_cores': len(val), 'val_build_s': round(t_val, 1),
+            'audit_s': round(time.time() - t0 - t_val, 1), 'audit': aud}
+
+
 @app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=12.0, memory=49152, timeout=24 * 3600)
 def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: int = 4, taps_key: str = 'v1_L8-16-24',
           taps: tuple = (8, 16, 24), workers: int = 16, val_cores: int = 256, max_train_songs: int = 0,
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
-          device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0):
+          device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = ''):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
@@ -146,7 +205,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     import numpy as np
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
-    from beatfcn.train.data import Corpus, load_manifest
+    from beatfcn.train.data import Corpus
     from beatfcn.train.loop import CoreSampler, TrainConfig, evaluate, lr_at, merge, summarize, to_device
     from beatfcn.cloud.gpu_util import GpuUtil
 
@@ -166,24 +225,11 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     runs = [Run(run_id, variant)] + [Run(a['run_id'], a.get('variant')) for a in (also or [])]
     log_all = lambda rec: [r.log(dict(rec)) for r in runs]
 
-    tdir = f'{DATA}/taps/{taps_key}'  # S20 is written last: songs still being encoded are left out
-    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
-    probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
-    rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have]
-    n0 = len(rows)
-    rows = [r for r in rows if probe.usable(r)]
-    dup_rows = sum(1 for r in rows if not r.get('kept'))
-    train_rows = [r for r in rows if r['split'] == 'train']
-    if songs_file:  # restrict to a fixed song list (pilot / equivalence checks)
-        allowed = set(open(songs_file).read().split())
-        train_rows = [r for r in train_rows if r['audio_sha256'] in allowed]
-    if max_train_songs:
-        keep = sorted({r['audio_sha256'] for r in train_rows})[:max_train_songs]
-        train_rows = [r for r in train_rows if r['audio_sha256'] in set(keep)]
-    val_rows = [r for r in rows if r['split'] == 'val']
-    if val_songs_file:  # fixed validation songs so runs with different caches stay comparable
-        vallow = set(open(val_songs_file).read().split())
-        val_rows = [r for r in val_rows if r['audio_sha256'] in vallow]
+    train_rows, val_rows, info = _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file)
+    dup_rows = info['dup_collapsed_charts']
+    need_audit = any(bool((v or {}).get('selection')) for v in [variant] + [a.get('variant') for a in (also or [])])
+    prep_path = f'{DATA}/prep/{prep}.pt' if prep else ''
+    prepped = torch.load(prep_path, weights_only=False) if prep_path and os.path.exists(prep_path) else None
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca, 'whiten': whiten}
     tc = TrainConfig(steps=steps, micro_batch=micro_batch, accumulation=accumulation, lr=lr, warmup=warmup,
                      validate_every=validate_every, val_cores=val_cores)
@@ -193,13 +239,19 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
                                          pin_memory=device == 'cuda')
     it = iter(stream)
-    vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
     t0 = time.time()
-    val = vsmp.fixed(val_cores, 20261022)
+    if prepped is not None:
+        if prepped['n_train'] != len(train_rows) or prepped['n_val'] != len(val_rows):
+            raise RuntimeError(f'prep {prep} was built for a different row selection')
+        val, val_build_s = prepped['val'], 0.0
+    else:
+        vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
+        val = vsmp.fixed(val_cores, 20261022)
+        val_build_s = round(time.time() - t0, 1)
     log_all({'event': 'data', 'train_charts': len(train_rows), 'train_songs': len({r['audio_sha256'] for r in train_rows}),
-             'val_charts': len(val_rows), 'val_cores': len(val), 'val_build_s': round(time.time() - t0, 1),
-             'dup_collapsed_charts': dup_rows, 'dup_ineligible_dropped': n0 - len(rows), 'paired_runs': [r.id for r in runs],
-             'modes': {m: sum(r['mode'] == m for r in train_rows) for m in ('mania_4k', 'phira')}})
+             'val_charts': len(val_rows), 'val_cores': len(val), 'val_build_s': val_build_s, 'prep': prep or None,
+             'dup_collapsed_charts': dup_rows, 'dup_ineligible_dropped': info['dup_ineligible_dropped'],
+             'paired_runs': [r.id for r in runs], 'modes': {m: sum(r['mode'] == m for r in train_rows) for m in ('mania_4k', 'phira')}})
     dev = torch.device(device)
     cuda = dev.type == 'cuda'
     for r in runs:
@@ -221,7 +273,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         raise RuntimeError(f'paired runs must resume from the same step: {[(r.id, r.start) for r in runs]}')
     start_step = runs[0].start
     if any(r.mc.selection for r in runs):
-        audit = _pair_audit(train_rows, _audit_corpus(corpus_args, train_rows))
+        audit = (prepped or {}).get('audit') or _pair_audit(train_rows, _audit_corpus(corpus_args, train_rows))
         cf_ok = cf_force or (audit['eligible_groups_seen'] >= 50 and audit['est_eligible_pairs'] >= 300)
         for r in runs:
             if r.mc.selection:
@@ -630,6 +682,13 @@ def sweep(configs: str):
     calls = []
     for c in cfgs:
         res = c.pop('resources', None)
+        if c.pop('prep', False):  # CPU-only start-up work first; the GPU container then starts stepping at once
+            need_audit = any(bool((v or {}).get('selection')) for v in [c.get('variant')] + [a.get('variant') for a in c.get('also', [])])
+            pk = {k: c.get(k, d) for k, d in (('pca', ''), ('whiten', False), ('songs_file', ''), ('max_train_songs', 0),
+                                              ('val_songs_file', ''), ('val_cores', 256))}
+            r = prep_train.remote(c['taps_key'], tuple(c['taps']), audit=need_audit, **pk)
+            print(c['run_id'], 'prep', json.dumps(r)[:300])
+            c['prep'] = r['key']
         fn = train.with_options(**res) if res else train
         calls.append((c['run_id'], fn.spawn(**{k: (tuple(v) if k == 'taps' else v) for k, v in c.items()})))
     for rid, call in calls:
