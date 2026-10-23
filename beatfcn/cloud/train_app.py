@@ -21,7 +21,7 @@ app = modal.App('beatfcn-train')
 POOL, RESIDENCE = 6, 16  # per worker and mode: resident songs, draws (of up to 4 cores) each before eviction
 data = modal.Volume.from_name('beatfcn-data', create_if_missing=True)
 image = (modal.Image.debian_slim(python_version='3.12')
-         .pip_install('torch==2.14.1', index_url='https://download.pytorch.org/whl/cu126')
+         .pip_install('torch==2.14.1', index_url='https://download.pytorch.org/whl/cu130')
          .pip_install('numpy==2.2.6', 'safetensors==0.5.3', 'pyyaml==6.0.3', 'jsonschema==4.26.0')
          .add_local_python_source('beatfcn'))
 
