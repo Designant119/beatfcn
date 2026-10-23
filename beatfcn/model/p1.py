@@ -54,6 +54,7 @@ class P1Config:
     time_head: str = 'pointer'  # 'pointer' | 'linear'
     fine_branch: bool = True
     gather_after_time: bool = True
+    packed: bool = True  # valid rows of all cores packed into one sequence; FlexAttention block mask (same math)
 
 
 class RMSNorm(nn.Module):
@@ -105,10 +106,43 @@ class Layer(nn.Module):
         a, b = self.f1(self.n2(x)).chunk(2, -1)
         return x + self.drop(self.f2(F.silu(a) * b))
 
+    def forward_packed(self, x, taps_ln, audio_t, row_t, row_timed, block_mask):
+        """x [1, N, d]: the valid rows of every core, core after core; audio memory stays per core [B, T, Na, Dt]
+        and is laid out core after core in front of the rows. Same math as forward() for every valid row."""
+        c, (_, N, _) = self.c, x.shape
+        hd = c.d // c.heads
+        z = self.n1(x)
+        q, k, v = (f(z).view(1, N, c.heads, hd).transpose(1, 2) for f in (self.q, self.k, self.v))
+        q, k = rope(q, row_t, row_timed), rope(k, row_t, row_timed)
+        audio = torch.einsum('t,btnd->bnd', self.mix.softmax(0).to(taps_ln.dtype), taps_ln)
+        B, Na = audio.shape[:2]
+        ka, va = (f(audio).view(B, Na, c.audio_kv_heads, hd).transpose(1, 2) for f in (self.ka, self.va))
+        ka = rope(ka, audio_t, torch.ones_like(audio_t))
+        rep = c.heads // c.audio_kv_heads
+        ka, va = (t.repeat_interleave(rep, 1).transpose(0, 1).reshape(1, c.heads, B * Na, hd) for t in (ka, va))
+        att = flex_attend(q, torch.cat([ka, k.to(ka.dtype)], 2), torch.cat([va, v.to(va.dtype)], 2).to(q.dtype), block_mask)
+        x = x + self.drop(self.o(att.transpose(1, 2).reshape(1, N, c.d)))
+        a, b = self.f1(self.n2(x)).chunk(2, -1)
+        return x + self.drop(self.f2(F.silu(a) * b))
+
 
 def onehot(x, n):
     """F.one_hot without its host-side range check (a device sync); inputs are clamped / validated upstream."""
     return x[..., None] == torch.arange(n, device=x.device)
+
+
+def flex_attend(q, k, v, block_mask):
+    """FlexAttention; compiled on CUDA (fused, skips fully masked blocks), eager reference elsewhere."""
+    from torch.nn.attention.flex_attention import flex_attention
+    global _FLEX
+    if q.is_cuda:
+        if _FLEX is None:
+            _FLEX = torch.compile(flex_attention, dynamic=True)
+        return _FLEX(q, k, v, block_mask=block_mask)
+    return flex_attention(q, k, v, block_mask=block_mask)
+
+
+_FLEX = None
 
 
 def masked_ce(logits, target, valid, mask=None, name=''):
@@ -332,6 +366,55 @@ class P1Model(nn.Module):
         win = win[..., None].expand(-1, -1, -1, per_cell).reshape(B, len(kinds), FE.LOCAL_CELLS * per_cell)
         return torch.cat([win, rows], -1)[:, None]
 
+    def _encode_packed(self, bt, xpad, taps, audio_t, row_t, row_timed, lens, valid, per_cell):
+        """Run the layers on valid rows only (padding was 62% of rows) and return normed hidden states
+        scattered back to the padded layout (padding rows = 0; every loss masks them)."""
+        B, Np, d = xpad.shape
+        dev = xpad.device
+        rv = torch.cat(valid, 1)  # [B, Np]
+        kinds = torch.cat([torch.full((n,), k, device=dev) for k, n in enumerate(lens + [Np - sum(lens)])])
+        idx = rv.reshape(-1).nonzero()[:, 0]  # one host sync: the packed length
+        core, pos = idx // Np, idx % Np
+        kind, ypos = kinds[pos], pos - sum(lens)
+        t_q = row_t.reshape(-1)[idx]
+        x = xpad.reshape(B * Np, d)[idx][None]
+        rt, rtd = t_q[None], row_timed.reshape(-1)[idx][None]
+        bm = self._block_mask(bt, core, kind, ypos, t_q, per_cell)
+        for layer in self.layers:
+            x = layer.forward_packed(x, taps, audio_t, rt, rtd, bm)
+        hn = self.norm(x)[0]
+        return hn.new_zeros(B * Np, d).index_copy(0, idx, hn).view(B, Np, d)
+
+    def _block_mask(self, bt, core, kind, ypos, t_q, per_cell):
+        """FlexAttention BlockMask equal to _mask() restricted to valid rows, plus 'same core'. KV layout:
+        [audio of core 0 .. core B-1 | packed rows]. Blocks between different cores or outside the audio
+        windows are skipped by the kernel."""
+        from torch.nn.attention.flex_attention import create_block_mask
+        c = self.c
+        dev = core.device
+        Na = FE.LOCAL_CELLS * per_cell
+        BNa, N = bt['mode'].shape[0] * Na, core.shape[0]
+        cell_t = (torch.arange(FE.LOCAL_CELLS, device=dev) + 0.5) * FE.CELL_US / FE.SEC - FE.HALO_US / FE.SEC
+        aval = bt['audio_valid']
+        (k0, k1), (w0, w1), windowed = c.k_window, c.y_window, c.audio_window
+
+        def mask_mod(b, h, qi, ki):
+            kq, cq = kind[qi], core[qi]
+            ai = torch.clamp(ki, max=BNa - 1)
+            ca, cell = ai // Na, (ai % Na) // per_cell
+            dt = cell_t[cell] - t_q[qi]
+            if windowed:
+                win = ((kq == 4) & (dt >= k0) & (dt <= k1)) | ((kq == 5) & (dt >= w0) & (dt < w1))
+            else:  # diagnostic: K and Y rows read all local audio
+                win = (kq == 4) | (kq == 5)
+            audio_ok = (ca == cq) & win & aval[ca, cell]
+            ri = torch.clamp(ki - BNa, min=0)
+            kr = kind[ri]
+            allow = (((kq == 0) & (kr == 0)) | ((kq == 1) & (kr <= 1)) | ((kq >= 2) & (kq <= 4) & (kr <= 4))
+                     | ((kq == 5) & ((kr <= 4) | ((kr == 5) & (ypos[ri] <= ypos[qi])))))
+            return torch.where(ki < BNa, audio_ok, (core[ri] == cq) & allow)
+        return create_block_mask(mask_mod, B=None, H=None, Q_LEN=N, KV_LEN=BNa + N, device=dev, BLOCK_SIZE=128)
+
     # ------------------------------------------------------------ forward
     def encode(self, bt):
         """Transformer over all rows; returns Y hidden states [B, G+1, d] and pointer features."""
@@ -351,6 +434,8 @@ class P1Model(nn.Module):
             per_cell = 4
         ptr_src = taps if c.readout != 'design_package' else (torch.stack([ln(bt['audio'][:, j]) for j, ln in enumerate(self.tap_ln)], 1) + self.band)
         taps = taps.flatten(2, 3)  # [B,T,cells*per_cell,Dt]
+        if torch.is_autocast_enabled(taps.device.type):  # every layer's einsum would cast it anyway: cast once
+            taps = taps.to(torch.get_autocast_dtype(taps.device.type))
         audio_t = ((torch.arange(FE.LOCAL_CELLS, device=taps.device) + 0.5) * FE.CELL_US / FE.SEC - FE.HALO_US / FE.SEC)
         audio_t = audio_t.repeat_interleave(per_cell)[None].expand(B, -1)
         rows, lens, times, timed, valid = self._rows(bt)
@@ -358,10 +443,13 @@ class P1Model(nn.Module):
         x = torch.cat(rows + [Y], 1)
         row_t = torch.cat(times + [ty], 1)
         row_timed = torch.cat(timed + [vy.float()], 1)
-        mask = self._mask(bt, lens, times + [ty], valid + [vy], Y.shape[1], per_cell)
-        for layer in self.layers:
-            x = layer(x, taps, audio_t, row_t, row_timed, mask)
-        hn = self.norm(x)
+        if c.packed:
+            hn = self._encode_packed(bt, x, taps, audio_t, row_t, row_timed, lens, valid + [vy], per_cell)
+        else:
+            mask = self._mask(bt, lens, times + [ty], valid + [vy], Y.shape[1], per_cell)
+            for layer in self.layers:
+                x = layer(x, taps, audio_t, row_t, row_timed, mask)
+            hn = self.norm(x)
         h = hn[:, sum(lens):]
         if c.readout == 'design_package':
             ptr_audio = self.ptr_proj(ptr_src[:, c.taps.index(c.top_tap)])  # top tap only, 8 bands

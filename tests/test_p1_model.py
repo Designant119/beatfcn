@@ -110,3 +110,25 @@ class LegalityTests(unittest.TestCase):
         ref = torch.nn.functional.cross_entropy(logits[:2].masked_fill(~mask[:2], -1e9), torch.tensor([0, 3]))
         self.assertEqual(int(bad), 0)
         self.assertTrue(torch.allclose(loss, ref))
+
+
+class PackedTests(unittest.TestCase):
+    def test_packed_flex_path_matches_padded_sdpa_path(self):
+        """Packing valid rows + FlexAttention block mask is the same computation as padded SDPA + dense mask."""
+        import dataclasses
+        bt = batch(6)
+        res = {}
+        for packed in (False, True):
+            torch.manual_seed(0)
+            m = P1Model(dataclasses.replace(CFG, packed=packed, dropout=0.0, selection=True)).eval()
+            b = dict(bt)
+            b['w_select'] = 0.2
+            loss, met = m(b)
+            loss.backward()
+            res[packed] = (float(loss), {k: tuple(float(x) for x in v) for k, v in met.items() if k != '_illegal'},
+                           torch.cat([p.grad.flatten() for p in m.parameters() if p.grad is not None]))
+        (l0, m0, g0), (l1, m1, g1) = res[False], res[True]
+        self.assertAlmostEqual(l0, l1, places=4)
+        for k in m0:
+            self.assertEqual(m0[k][1:], m1[k][1:], k)
+        self.assertLess(float((g0 - g1).norm() / g0.norm()), 1e-5)

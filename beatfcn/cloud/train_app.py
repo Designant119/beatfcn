@@ -186,7 +186,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     decay = [p for p in model.parameters() if p.ndim >= 2]
     other = [p for p in model.parameters() if p.ndim < 2]
     opt = torch.optim.AdamW([{'params': decay, 'weight_decay': tc.weight_decay}, {'params': other, 'weight_decay': 0.0}],
-                            lr=tc.lr, betas=(0.9, 0.95))
+                            lr=tc.lr, betas=(0.9, 0.95), fused=True)
     log({'event': 'start', 'model': asdict(mc), 'train': asdict(tc), 'params': sum(p.numel() for p in model.parameters()),
          'gpu': torch.cuda.get_device_name()})
     start_step, best = 0, None
@@ -713,7 +713,7 @@ def profile(n_batches: int = 12, pool: int = POOL):
 @app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=12.0, memory=49152, timeout=3600)
 def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24',
                     tap_dim: int = 1024, n_cores: int = 384, steps: int = 24, variant: dict | None = None,
-                    configs: tuple = ('m8x4_sync', 'm8x4', 'm32', 'm32_fused', 'm32_fused_compile')):
+                    configs: tuple = ('pad_m8x4', 'packed_m8x4', 'packed_m32')):
     """GPU-side cost of one optimiser step (32 cores) with data already prepared on the host (pinned).
 
     Isolates what the device needs per step, so CPU workers can be sized to it, not guessed."""
@@ -744,11 +744,11 @@ def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24),
                            'build_s': round(build_s, 1), 'rows': []}
     for cfg in configs:
         torch.manual_seed(0)
-        mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **(variant or {}))
+        mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **{**(variant or {}), 'packed': 'packed' in cfg})
         model = P1Model(mc).to(dev)
-        opt = torch.optim.AdamW(model.parameters(), lr=1e-4, fused='fused' in cfg)
-        fwd = torch.compile(model) if 'compile' in cfg else model
-        micro, acc = (m8, 4) if cfg.startswith('m8') else (m32, 1)
+        opt = torch.optim.AdamW(model.parameters(), lr=1e-4, fused=True)
+        fwd = model
+        micro, acc = (m8, 4) if '_m8' in cfg else (m32, 1)
         sync = 'sync' in cfg
         k = 0
 
@@ -768,7 +768,7 @@ def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24),
             opt.zero_grad(set_to_none=True)
         try:
             tw = time.time()
-            for _ in range(6 if 'compile' in cfg else 3):  # warm-up (compile cycles through the batch shapes)
+            for _ in range(6 if 'packed' in cfg else 3):  # warm-up (FlexAttention compiles for the first shapes)
                 step()
             torch.cuda.synchronize()
             warm = time.time() - tw
@@ -792,7 +792,7 @@ def bench_train_gpu(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24),
 
 
 @app.local_entrypoint()
-def bench_gpu(gpus: str = 'L40S,H100'):
-    calls = {g: bench_train_gpu.with_options(gpu=g).spawn() for g in gpus.split(',')}
+def bench_gpu(gpus: str = 'L40S,H100', timeout: int = 900):
+    calls = {g: bench_train_gpu.with_options(gpu=g, timeout=timeout).spawn() for g in gpus.split(',')}
     for g, c in calls.items():
         print(json.dumps(c.get(), indent=1))
