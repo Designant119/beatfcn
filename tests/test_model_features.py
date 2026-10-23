@@ -85,3 +85,26 @@ class PoolTests(unittest.TestCase):
         for _ in range(10):
             smp.draw(4)
         self.assertEqual(len(smp.resident['mania_4k']), 6)
+
+
+class SamplerRejectsOversizedGroups(unittest.TestCase):
+    def test_core_with_more_than_max_notes_is_skipped_not_crashed(self):
+        from unittest import mock
+        from beatfcn.train.loop import CoreSampler
+        from beatfcn.model.batch import MAX_NOTES
+        from events_helpers import synthetic_mania, DURATION
+        chart = synthetic_mania(0)
+        rows = [{'chart_id': 'c0', 'song': 's0', 'mode': 'mania_4k', 'duration_us': DURATION}]
+        smp = CoreSampler(rows, lambda cid: chart, lambda sha: object(), 0)
+        real = F.build_core
+
+        def oversized(*a, **k):
+            ex = real(*a, **k)
+            if not ex.groups:  # only cores with an oversized group reach the sampler's check
+                raise F.SkipExample('empty core in fixture')
+            ex.groups[0]['notes'] = ex.groups[0]['notes'][:1] * (MAX_NOTES + 1)
+            return ex
+        with mock.patch.object(F, 'build_core', oversized):
+            with self.assertRaises(RuntimeError):  # every draw is skipped, never a crash from collate
+                smp.draw(1)
+        self.assertTrue(any('MAX_NOTES' in k for k in smp.skipped), smp.skipped)

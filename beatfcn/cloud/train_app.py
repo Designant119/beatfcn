@@ -46,11 +46,18 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap):
             corpus = Corpus(**corpus_args)
             smp = CoreSampler(corpus.train_rows(rows), corpus.chart, lambda sha: corpus.song(sha, in_memory=True),
                               seed * 1000 + wid, salient=corpus.salient_us, pool=POOL, residence=RESIDENCE)
+            from beatfcn.model import features as F
             while True:
                 items = []
                 while len(items) < micro_batch:  # 4 cores per song bucket -> 2+ songs per microbatch
                     items += smp.draw(min(4, micro_batch - len(items)))
-                yield collate([a for a, _ in items], [b for _, b in items], taps, top_tap), dict(smp.skipped)
+                try:
+                    bt = collate([a for a, _ in items], [b for _, b in items], taps, top_tap)
+                except F.SkipExample as exc:  # never let one core take the worker (and the run) down
+                    key = 'collate:' + str(exc)[:40]
+                    smp.skipped[key] = smp.skipped.get(key, 0) + 1
+                    continue
+                yield bt, dict(smp.skipped)
     return Stream()
 
 

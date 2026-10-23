@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from ..events.requests import sample_request
 from ..model import features as F
-from ..model.batch import collate
+from ..model.batch import collate, MAX_NOTES
 from ..model.p1 import P1Model
 
 
@@ -64,6 +64,8 @@ class CoreSampler:
             raise F.SkipExample('model view quarantine')
         c0 = F.choose_core(s, np.random.default_rng([seed, 1]), chart_row['duration_us'])
         ex = F.build_core(s, chart.events, c0, chart_row['duration_us'])
+        if any(len(tg['notes']) > MAX_NOTES for tg in ex.groups):  # collate would raise mid-batch (crashed S1 at step ~130)
+            raise F.SkipExample('group has more notes than MAX_NOTES')
         bad = F.check_targets(ex)
         if bad:
             raise F.SkipExample('illegal_target:' + ','.join(bad))
