@@ -370,7 +370,8 @@ def run_probe(rows_json: str, out: str = 'reports/layer_probe.json', epochs: int
 @app.local_entrypoint()
 def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24', per_container: int = 200, pca: str = '',
            quant: bool = False, gpu: str = '', batch: int = 32, limit: int = 0, group: int = 4, offset: int = 0,
-           mode: str = 'auto', writers: int = 8, cpu: float = 0, timeout: int = 0, min_util: float = 0.0):
+           mode: str = 'auto', writers: int = 8, cpu: float = 0, timeout: int = 0, min_util: float = 0.0,
+           check_after_s: float = 20.0):
     """Encode songs listed (one sha per line) in parallel containers; idempotent. gpu overrides the
     container GPU (encoding is volume-bound, so cheaper GPUs can win per song); limit: first N songs only."""
     shas = [s.strip() for s in Path(shas_file).read_text().split() if s.strip()]
@@ -380,7 +381,8 @@ def encode(shas_file: str, taps_key: str = 'v1_L8-16-24', layers: str = '8,16,24
     opts = {k: v for k, v in (('gpu', gpu), ('cpu', cpu), ('timeout', timeout)) if v}  # timeout: hard cost cap per container
     fn = encode_songs.with_options(**opts) if opts else encode_songs
     t = time.time()
-    res = list(fn.starmap([(c, ls, taps_key, batch, pca, quant, group, mode, writers, 16, min_util) for c in chunks]))
+    res = list(fn.starmap([(c, ls, taps_key, batch, pca, quant, group, mode, writers, 16, min_util, check_after_s)
+                           for c in chunks]))
     keys = ('mode', 'probe', 'steady_util', 'steady_windows_per_s', 'steady_host_s', 'flush_s', 'write_MBps_per_thread', 'gpu',
             'aborted', 'fallback_buffers')
     print(json.dumps({'chunks': len(chunks), 'songs': sum(r['songs'] for r in res), 'windows': sum(r['windows'] for r in res),
