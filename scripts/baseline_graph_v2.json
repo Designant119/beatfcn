@@ -2,8 +2,8 @@
  {
   "run_id": "baseline-v2-graph",
   "steps": 500,
-  "micro_batch": 16,
-  "accumulation": 2,
+  "micro_batch": 8,
+  "accumulation": 4,
   "taps_key": "v4_i8_L9-16-24",
   "taps": [
    9,
@@ -21,7 +21,7 @@
    "packed": false,
    "compact_inner": true
   },
-  "pool_songs": 128,
+  "pool_songs": 160,
   "prefetch": 6,
   "graph": true,
   "min_util": 80.0,
@@ -33,6 +33,8 @@
    "cpu": 16.0,
    "memory": 65536,
    "timeout": 1500
-  }
+  },
+  "pool_per_worker": 4,
+  "max_graphs": 2
  }
 ]

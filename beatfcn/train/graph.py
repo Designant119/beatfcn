@@ -21,10 +21,13 @@ class _Tier:
 
 
 class TieredStep:
-    def __init__(self, runs, clip: float, device, capture=True, warmup=3, before_capture=None, tiers=TIERS):
+    def __init__(self, runs, clip: float, device, capture=True, warmup=3, before_capture=None, tiers=TIERS, max_graphs=2):
         """runs: objects with .model and .opt (AdamW(capturable=True, fused=True) with a tensor lr on CUDA).
-        before_capture(): called right before each capture (e.g. SongPool.wait_idle)."""
+        before_capture(): called right before each capture (e.g. SongPool.wait_idle). max_graphs: every captured
+        graph keeps its own activation pool (measured 20+ GB per tier at 32 cores), so only the first
+        `max_graphs` tiers are captured; larger tiers run eagerly."""
         self.runs, self.clip, self.dev = runs, clip, torch.device(device)
+        self.max_graphs = max_graphs
         self.cuda = self.dev.type == 'cuda'
         self.capture = capture and self.cuda
         self.warmup, self.before_capture = warmup, before_capture
@@ -93,7 +96,7 @@ class TieredStep:
                          for k, value in acc.items()})  # (mean loss, count, correct), no host sync
         norms = []
         for r in self.runs:
-            norms.append(torch.nn.utils.clip_grad_norm_(r.model.parameters(), self.clip))
+            norms.append(torch.nn.utils.clip_grad_norm_(r.model.parameters(), self.clip).clone())  # own storage: read later
             r.opt.step()
             r.opt.zero_grad(set_to_none=False)  # grads stay allocated: static tensors the graphs write
         return mets, norms
@@ -115,6 +118,10 @@ class TieredStep:
             return self._body(slots)
         tier = self.tiers[ti]
         self.stats['tier_steps'][ti] += 1
+        if ti >= self.max_graphs:  # tier too large to keep a captured pool for: eager, still padded (same code path)
+            self._fill(tier, batches, w_select)
+            self.stats['eager_steps'] += 1
+            return self._body(tier.slots)
         self._fill(tier, batches, w_select)
         if tier.graph is None:
             if tier.seen < self.warmup:  # eager warm-up on a side stream (allocator / cuBLAS / RNG state)

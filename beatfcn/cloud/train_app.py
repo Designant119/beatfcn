@@ -33,7 +33,7 @@ def _audit_corpus(corpus_args, rows):
     return c
 
 
-def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, static=None):
+def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, static=None, pool=POOL):
     """Training micro-batches. meta=True (training): workers build only the metadata (collate_meta,
     ~50 KB per core; songs are never read by workers) and the main process attaches audio from a
     GPU-resident SongPool. meta=False: full CPU collate with whole songs read in the worker."""
@@ -49,7 +49,7 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
             corpus = Corpus(**corpus_args)
             song_cache = corpus.song_info if meta else (lambda sha: corpus.song(sha, in_memory=True))
             smp = CoreSampler(corpus.train_rows(rows), corpus.chart, song_cache, seed * 1000 + wid,
-                              salient=corpus.salient_us, pool=POOL, residence=RESIDENCE,
+                              salient=corpus.salient_us, pool=pool, residence=RESIDENCE,
                               limits=STATIC_CORE if static else None)
             from beatfcn.model import features as F
             t_w = time.time()
@@ -247,7 +247,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
           device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = '',
-          pool_songs: int = 160, prefetch: int = 6, graph: bool = False, manifest_name: str = 'charts.jsonl'):
+          pool_songs: int = 160, prefetch: int = 6, graph: bool = False, manifest_name: str = 'charts.jsonl',
+          pool_per_worker: int = POOL, max_graphs: int = 2):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
@@ -308,7 +309,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     if os.path.exists(f'{runs[0].dir}/last.pt'):  # resumed runs must not replay the sample sequence from step 0
         resume_step = int(torch.load(f'{runs[0].dir}/last.pt', map_location='cpu', weights_only=False)['step'])
     stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed + 7919 * resume_step, micro_batch, tuple(taps),
-                                                 max(taps), static=None),  # graphs pad per shape tier: no static filtering
+                                                 max(taps), static=None, pool=pool_per_worker),  # graphs pad per tier: no filtering
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
                                          pin_memory=device == 'cuda')
     from collections import deque
@@ -318,9 +319,9 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     # prefetched batches, or songs get evicted and reloaded in a loop (review item C; 28 workers simulated 74%
     # reloads at 160). ~108 MB per song: 200 songs = 22 GB.
     n_modes = len({r['mode'] for r in train_rows})
-    need = workers * n_modes * POOL + prefetch * 8 + 8
+    need = workers * n_modes * pool_per_worker + prefetch * 8 + 8
     if pool_songs < need:
-        log_all({'event': 'pool_capacity', 'requested': pool_songs, 'raised_to': need, 'workers': workers, 'modes': n_modes, 'per_worker': POOL})
+        log_all({'event': 'pool_capacity', 'requested': pool_songs, 'raised_to': need, 'workers': workers, 'modes': n_modes, 'per_worker': pool_per_worker})
         pool_songs = need
     pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs)
     raw_it, queue = iter(stream), deque()
@@ -395,7 +396,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
     mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
     from beatfcn.train.graph import TieredStep
-    gs = TieredStep(runs, tc.clip, dev, capture=cuda, before_capture=pool.wait_idle) if graph else None
+    gs = TieredStep(runs, tc.clip, dev, capture=cuda, before_capture=pool.wait_idle, max_graphs=max_graphs) if graph else None
     examples, wait_s, gpu_s, t_loop, aborted = 0, 0.0, 0.0, time.time(), None
     end = min(stop_at, tc.steps) if stop_at else tc.steps
 
