@@ -977,6 +977,7 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
         full.append(bb)
     torch.cuda.synchronize()
     out['attach_ms_per_batch'] = round(1000 * (time.time() - t) / len(metas), 1)
+    print(json.dumps(out), flush=True)  # partial results survive a later failure
 
     class Run:
         def __init__(self, model, opt):
@@ -986,7 +987,7 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
         runs = []
         for i in range(2 if paired else 1):
             torch.manual_seed(seed)
-            mc = P1Config(taps=taps, top_tap=max(taps), tap_dim=tap_dim, **{**(variant or {}), 'selection': bool(i)})
+            mc = P1Config(taps=taps, top_tap=max(taps), tap_dim=tap_dim, **{'packed': False, **(variant or {}), 'selection': bool(i)})
             m = P1Model(mc).to(dev)
             lr = torch.tensor(1e-4, device=dev) if graph else 1e-4
             runs.append(Run(m, torch.optim.AdamW(m.parameters(), lr=lr, fused=True, capturable=graph)))
@@ -1002,6 +1003,7 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
         gs_e.step()
     torch.cuda.synchronize()
     out['eager'] = {'s_per_step': round((time.time() - t) / steps, 3), 'util': mon.take()['util_mean']}
+    print(json.dumps(out), flush=True)
     # --- graphed
     torch.manual_seed(1)
     runs_g = make(True)
@@ -1022,6 +1024,7 @@ def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, s
     torch.cuda.synchronize()
     out['graph'] = {'s_per_step': round((time.time() - t) / steps, 3), 'util': mon.take()['util_mean'],
                     'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2)}
+    print(json.dumps(out), flush=True)
     # --- numerics: fresh models, identical steps eager vs graphed on the same batches
     torch.manual_seed(2)
     ra, rb = make(False, seed=5), make(True, seed=5)

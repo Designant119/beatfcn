@@ -54,7 +54,7 @@ class P1Config:
     time_head: str = 'pointer'  # 'pointer' | 'linear'
     fine_branch: bool = True
     gather_after_time: bool = True
-    packed: bool = True  # valid rows of all cores packed into one sequence; FlexAttention block mask (same math)
+    packed: bool = False  # FlexAttention packed path (same math; measured slower than padded SDPA, and its nonzero() cannot be graph-captured)
 
 
 class RMSNorm(nn.Module):
