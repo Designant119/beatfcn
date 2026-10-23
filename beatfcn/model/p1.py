@@ -366,34 +366,47 @@ class P1Model(nn.Module):
         win = win[..., None].expand(-1, -1, -1, per_cell).reshape(B, len(kinds), FE.LOCAL_CELLS * per_cell)
         return torch.cat([win, rows], -1)[:, None]
 
+    PACK_BUCKET = 1024  # packed length is padded to a multiple of this: few distinct shapes for the compiled kernels
+
     def _encode_packed(self, bt, xpad, taps, audio_t, row_t, row_timed, lens, valid, per_cell):
         """Run the layers on valid rows only (padding was 62% of rows) and return normed hidden states
-        scattered back to the padded layout (padding rows = 0; every loss masks them)."""
+        scattered back to the padded layout (padding rows = 0; every loss masks them).
+
+        The packed sequence is padded to a PACK_BUCKET multiple with dummy rows (core = B, kind R) that
+        attend only to each other, so the kernels see a handful of shapes instead of one per batch."""
         B, Np, d = xpad.shape
         dev = xpad.device
         rv = torch.cat(valid, 1)  # [B, Np]
         kinds = torch.cat([torch.full((n,), k, device=dev) for k, n in enumerate(lens + [Np - sum(lens)])])
-        idx = rv.reshape(-1).nonzero()[:, 0]  # one host sync: the packed length
-        core, pos = idx // Np, idx % Np
-        kind, ypos = kinds[pos], pos - sum(lens)
-        t_q = row_t.reshape(-1)[idx]
-        x = xpad.reshape(B * Np, d)[idx][None]
-        rt, rtd = t_q[None], row_timed.reshape(-1)[idx][None]
+        idx = rv.reshape(-1).nonzero()[:, 0]  # one host sync: the packed length (core-major, so core is sorted)
+        N = idx.shape[0]
+        Npad = -(-N // self.PACK_BUCKET) * self.PACK_BUCKET
+        pad = Npad - N
+        core = torch.cat([idx // Np, torch.full((pad,), B, device=dev)])
+        pos = idx % Np
+        kind = torch.cat([kinds[pos], torch.zeros(pad, dtype=kinds.dtype, device=dev)])
+        ypos = torch.cat([pos - sum(lens), torch.zeros(pad, dtype=pos.dtype, device=dev)])
+        t_q = torch.cat([row_t.reshape(-1)[idx], torch.zeros(pad, dtype=row_t.dtype, device=dev)])
+        x = torch.cat([xpad.reshape(B * Np, d)[idx], xpad.new_zeros(pad, d)])[None]
+        rt, rtd = t_q[None], torch.cat([row_timed.reshape(-1)[idx], torch.zeros(pad, dtype=row_timed.dtype, device=dev)])[None]
         bm = self._block_mask(bt, core, kind, ypos, t_q, per_cell)
         for layer in self.layers:
             x = layer.forward_packed(x, taps, audio_t, rt, rtd, bm)
-        hn = self.norm(x)[0]
+        hn = self.norm(x)[0, :N]
         return hn.new_zeros(B * Np, d).index_copy(0, idx, hn).view(B, Np, d)
 
-    def _block_mask(self, bt, core, kind, ypos, t_q, per_cell):
+    def _block_mask(self, bt, core, kind, ypos, t_q, per_cell, block=128):
         """FlexAttention BlockMask equal to _mask() restricted to valid rows, plus 'same core'. KV layout:
-        [audio of core 0 .. core B-1 | packed rows]. Blocks between different cores or outside the audio
-        windows are skipped by the kernel."""
-        from torch.nn.attention.flex_attention import create_block_mask
+        [audio of core 0 .. core B-1 | packed rows]. The element-exact rule is mask_mod (run by the kernel
+        inside partial blocks); the block list is built at block granularity from per-block core ranges
+        and time ranges (a superset of the non-empty blocks), never by evaluating the mask densely."""
+        from torch.nn.attention.flex_attention import BlockMask
         c = self.c
         dev = core.device
+        B = bt['mode'].shape[0]
         Na = FE.LOCAL_CELLS * per_cell
-        BNa, N = bt['mode'].shape[0] * Na, core.shape[0]
+        BNa, N = B * Na, core.shape[0]
+        assert BNa % block == 0 and N % block == 0, (BNa, N)
         cell_t = (torch.arange(FE.LOCAL_CELLS, device=dev) + 0.5) * FE.CELL_US / FE.SEC - FE.HALO_US / FE.SEC
         aval = bt['audio_valid']
         (k0, k1), (w0, w1), windowed = c.k_window, c.y_window, c.audio_window
@@ -413,7 +426,35 @@ class P1Model(nn.Module):
             allow = (((kq == 0) & (kr == 0)) | ((kq == 1) & (kr <= 1)) | ((kq >= 2) & (kq <= 4) & (kr <= 4))
                      | ((kq == 5) & ((kr <= 4) | ((kr == 5) & (ypos[ri] <= ypos[qi])))))
             return torch.where(ki < BNa, audio_ok, (core[ri] == cq) & allow)
-        return create_block_mask(mask_mod, B=None, H=None, Q_LEN=N, KV_LEN=BNa + N, device=dev, BLOCK_SIZE=128)
+        # --- block-level superset ---
+        nq = N // block
+        cb = core.view(nq, block)
+        cmin, cmax = cb.min(1).values, cb.max(1).values  # cores spanned by each q / row block
+        inf = float('inf')
+        if windowed:
+            wlo = torch.where(kind == 4, k0, torch.where(kind == 5, w0, inf))
+            whi = torch.where(kind == 4, k1, torch.where(kind == 5, w1, -inf))
+        else:
+            wlo = torch.where((kind == 4) | (kind == 5), -inf, inf)
+            whi = torch.where((kind == 4) | (kind == 5), inf, -inf)
+        lo = (t_q + wlo).view(nq, block).min(1).values  # earliest audio time any row of the block may read
+        hi = (t_q + whi).view(nq, block).max(1).values
+        # audio kv blocks: key range -> cores and cell range (a block straddling two cores takes all cells)
+        j = torch.arange(BNa // block, device=dev)
+        k_lo, k_hi = j * block, j * block + block - 1
+        a_clo, a_chi = k_lo // Na, k_hi // Na
+        same = a_clo == a_chi
+        c_lo = torch.where(same, (k_lo % Na) // per_cell, torch.zeros_like(k_lo))
+        c_hi = torch.where(same, (k_hi % Na) // per_cell, torch.full_like(k_hi, FE.LOCAL_CELLS - 1))
+        tmin, tmax = cell_t[c_lo], cell_t[c_hi]
+        audio_ok = ((a_clo[None] <= cmax[:, None]) & (a_chi[None] >= cmin[:, None])
+                    & (tmin[None] <= hi[:, None]) & (tmax[None] >= lo[:, None]))
+        rows_ok = (cmin[None] <= cmax[:, None]) & (cmax[None] >= cmin[:, None])  # row kv blocks = q blocks
+        allowed = torch.cat([audio_ok, rows_ok], 1)  # [nq, n_kv_blocks]
+        num = allowed.sum(1)
+        order = torch.sort((~allowed).to(torch.int8), dim=1, stable=True).indices  # allowed blocks first, ascending
+        return BlockMask.from_kv_blocks(num[None, None].to(torch.int32), order[None, None].to(torch.int32).contiguous(),
+                                        BLOCK_SIZE=block, mask_mod=mask_mod, seq_lengths=(N, BNa + N))
 
     # ------------------------------------------------------------ forward
     def encode(self, bt):

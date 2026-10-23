@@ -132,3 +132,34 @@ class PackedTests(unittest.TestCase):
         for k in m0:
             self.assertEqual(m0[k][1:], m1[k][1:], k)
         self.assertLess(float((g0 - g1).norm() / g0.norm()), 1e-5)
+
+
+class BlockMaskTests(unittest.TestCase):
+    def test_block_level_mask_is_superset_of_dense_reference(self):
+        """The block list built from per-block core/time ranges must include every block the element-exact
+        mask_mod (evaluated densely by create_block_mask) marks non-empty."""
+        from torch.nn.attention.flex_attention import create_block_mask
+        from beatfcn.model import features as FE
+        from beatfcn.model.batch import dequant
+        bt = dequant(batch(5, seed=2))
+        m = P1Model(CFG).eval()
+        with torch.no_grad():
+            rows, lens, times, timed, valid = m._rows(bt)
+            Y, ty, vy = m._y_rows(bt, m.group_embedding(bt))
+            rv = torch.cat(valid + [vy], 1)
+            B, Np = rv.shape
+            kinds = torch.cat([torch.full((n,), k) for k, n in enumerate(lens + [Np - sum(lens)])])
+            idx = rv.reshape(-1).nonzero()[:, 0]
+            N = idx.shape[0]
+            pad = -(-N // m.PACK_BUCKET) * m.PACK_BUCKET - N
+            core = torch.cat([idx // Np, torch.full((pad,), B)])
+            pos = idx % Np
+            kind = torch.cat([kinds[pos], torch.zeros(pad, dtype=kinds.dtype)])
+            ypos = torch.cat([pos - sum(lens), torch.zeros(pad, dtype=pos.dtype)])
+            t_q = torch.cat([torch.cat(times + [ty], 1).reshape(-1)[idx], torch.zeros(pad)])
+            bm = m._block_mask(bt, core, kind, ypos, t_q, 8)
+            BNa = B * FE.LOCAL_CELLS * 8
+            ref = create_block_mask(bm.mask_mod, None, None, N + pad, BNa + N + pad, device='cpu', BLOCK_SIZE=128)
+            ours, theirs = bm.to_dense()[0, 0].bool(), ref.to_dense()[0, 0].bool()
+        self.assertEqual(int((theirs & ~ours).sum()), 0)
+        self.assertLess(float(ours.float().mean()), 0.25)  # and it is sparse, not a dense superset
