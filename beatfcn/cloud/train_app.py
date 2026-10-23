@@ -1037,6 +1037,53 @@ def graph_bench(gpus: str = 'H100', steps: int = 20, paired: bool = True):
         print(json.dumps(c.get(), indent=1))
 
 
+@app.function(image=image, volumes={DATA: data}, cpu=2.0, memory=8192, timeout=900)
+def diag_worker(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24', draws: int = 8):
+    """Stage timings of one worker's start-up on the volume (what a DataLoader worker does before its first batch)."""
+    from beatfcn.model.batch import STATIC, STATIC_CORE, collate_meta
+    from beatfcn.train.data import Corpus, load_manifest
+    from beatfcn.train.loop import CoreSampler
+    t = {}
+    t0 = time.time()
+    tdir = f'{DATA}/taps/{taps_key}'
+    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    t['listdir_exists_s'] = round(time.time() - t0, 1)
+    t0 = time.time()
+    rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
+    t['manifest_s'] = round(time.time() - t0, 1)
+    t0 = time.time()
+    corpus = Corpus(root=DATA, taps_key=taps_key, layers=tuple(taps), pca=pca)
+    smp = CoreSampler(corpus.train_rows(rows), corpus.chart, corpus.song_info, 1, salient=corpus.salient_us, pool=POOL,
+                      residence=RESIDENCE, limits=STATIC_CORE)
+    t['corpus_sampler_s'] = round(time.time() - t0, 1)
+    t0 = time.time()
+    Dt, quant = corpus.tap_dim, corpus.quant
+    t['tap_dim_s'] = round(time.time() - t0, 1)
+    sha = rows[0]['audio_sha256']
+    t0 = time.time(); corpus.song_info(sha); t['song_info_s'] = round(time.time() - t0, 2)
+    t0 = time.time(); corpus.salient_us(sha); t['salient_s'] = round(time.time() - t0, 2)
+    t0 = time.time(); corpus.chart(rows[0]['chart_id']); t['chart_s'] = round(time.time() - t0, 2)
+    per = []
+    items = []
+    for i in range(draws):
+        t0 = time.time()
+        items += smp.draw(4)
+        per.append(round(time.time() - t0, 2))
+    t['draw_s'] = per
+    t0 = time.time()
+    bt = collate_meta([a for a, _ in items[:32]], [b for _, b in items[:32]], tuple(taps), max(taps), Dt, 1024, quant, STATIC)
+    t['collate_meta_s'] = round(time.time() - t0, 2)
+    t['skipped'] = dict(smp.skipped)
+    t['cores'] = len(items)
+    print(json.dumps(t))
+    return t
+
+
+@app.local_entrypoint()
+def diag():
+    print(json.dumps(diag_worker.remote(), indent=1))
+
+
 @app.local_entrypoint()
 def prep_bench(n_batches: int = 12, workers: int = 14):
     print(prep_bench_batches.remote(n_batches=n_batches, workers=workers))

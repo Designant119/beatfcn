@@ -83,6 +83,14 @@ def check_stacks(events, max_stack=DUP_MAX_STACK):
     return top
 
 
+def npy_shape(path):
+    """Shape from a .npy header without mapping or reading the data (network volumes: no mmap, one small read)."""
+    with open(path, 'rb') as f:
+        version = np.lib.format.read_magic(f)
+        shape, _, _ = np.lib.format._read_array_header(f, version)
+    return shape
+
+
 def chart_from_canon(doc: dict, shift_us: int = 0) -> Chart:
     evs = []
     for e in doc['events']:
@@ -183,7 +191,7 @@ class Corpus:
         summary counts follow the encoder's window plan from the mel frame count."""
         from ..audio.memory import plan, SUMMARY_CELLS
         from ..model.batch import SongInfo
-        frames = np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode='r').shape[0]
+        frames = npy_shape(os.path.join(self.root, 'mel10', f'{sha}.npy'))[0]
         cells = plan(frames).cells
         return SongInfo(sha, cells, -(-cells // SUMMARY_CELLS))
 
@@ -193,7 +201,7 @@ class Corpus:
         volume take tens of seconds, and every worker used to do it)."""
         if not hasattr(self, '_tap_dim'):
             sha = next(iter(self._rows.values()))['audio_sha256'] if self._rows else next(iter(os.listdir(os.path.join(self.root, 'taps', self.taps_key))))
-            self._tap_dim = np.load(os.path.join(self.root, 'taps', self.taps_key, sha, f'L{self.layers[0]}.npy'), mmap_mode='r').shape[-1]
+            self._tap_dim = npy_shape(os.path.join(self.root, 'taps', self.taps_key, sha, f'L{self.layers[0]}.npy'))[-1]
         return self._tap_dim
 
     @property
