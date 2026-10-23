@@ -159,12 +159,13 @@ class Corpus:
         except ValueError:
             return False
 
-    def salient_us(self, sha):
+    def salient_us(self, sha, mel=None):
         """Spectral-flux peaks (same envelope as the offset diagnostic) as candidate unselected times."""
         hit = self._salient.get(sha)
         if hit is None:
             from ..ingest.offset import flux_envelope, PEAK_MIN
-            env = flux_envelope(np.load(os.path.join(self.root, 'mel10', f'{sha}.npy')).astype(np.float32))
+            mel = np.load(os.path.join(self.root, 'mel10', f'{sha}.npy')) if mel is None else mel
+            env = flux_envelope(np.asarray(mel, np.float32))
             pk = np.where((env[1:-1] > env[:-2]) & (env[1:-1] >= env[2:]) & (env[1:-1] > PEAK_MIN))[0] + 1
             if len(self._salient) > 256:
                 self._salient.clear()
@@ -176,13 +177,14 @@ class Corpus:
 
     def song(self, sha, in_memory=False) -> SongCache:
         """Memmapped by default: a core reads a few contiguous slices (16 s local audio, one reference
-        range, end blocks), far less than whole-song reads. in_memory=True loads whole files."""
+        range, end blocks), far less than whole-song reads. in_memory=True loads whole files with one
+        sequential read each (int8 taps stay int8 in memory and are dequantised per slice)."""
         base = os.path.join(self.root, 'taps', self.taps_key, sha)
         mm = None if in_memory else 'r'
         taps = {l: np.load(os.path.join(base, f'L{l}.npy'), mmap_mode=mm) for l in self.layers}
         for l, sc in self.scale.items():
             if taps[l].dtype == np.int8:
-                taps[l] = QuantArray(taps[l], sc) if mm else (taps[l].astype(np.float32) * sc).astype(np.float16)
+                taps[l] = QuantArray(taps[l], sc)
         summary = np.load(os.path.join(base, 'S20.npy'), mmap_mode=mm)
         mel = np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode=mm)
         return SongCache(taps, summary, mel, int(mel.shape[0] * 10_000))

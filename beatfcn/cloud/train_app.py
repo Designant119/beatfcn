@@ -18,6 +18,7 @@ _HERE = Path(__file__).resolve()
 REPO = _HERE.parents[2] if len(_HERE.parents) > 2 else _HERE.parent
 DATA = '/data'
 app = modal.App('beatfcn-train')
+POOL, RESIDENCE = 4, 4  # per worker and mode: resident songs, draws (of up to 4 cores) each before eviction
 data = modal.Volume.from_name('beatfcn-data', create_if_missing=True)
 image = (modal.Image.debian_slim(python_version='3.12')
          .pip_install('torch==2.7.1', index_url='https://download.pytorch.org/whl/cu126')
@@ -43,7 +44,8 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap):
             info = torch.utils.data.get_worker_info()
             wid = info.id if info else 0
             corpus = Corpus(**corpus_args)
-            smp = CoreSampler(corpus.train_rows(rows), corpus.chart, corpus.song, seed * 1000 + wid, salient=corpus.salient_us)
+            smp = CoreSampler(corpus.train_rows(rows), corpus.chart, lambda sha: corpus.song(sha, in_memory=True),
+                              seed * 1000 + wid, salient=corpus.salient_us, pool=POOL, residence=RESIDENCE)
             while True:
                 items = []
                 while len(items) < micro_batch:  # 4 cores per song bucket -> 2+ songs per microbatch
@@ -130,7 +132,9 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           taps: tuple = (8, 16, 24), workers: int = 28, val_cores: int = 256, max_train_songs: int = 0,
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
-          pca: str = '', cf_force: bool = False):
+          pca: str = '', cf_force: bool = False, stop_at: int = 0):
+    """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
+    with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner)."""
     import numpy as np
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
@@ -146,7 +150,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         logf.flush()
         print(json.dumps(rec)[:600], flush=True)
 
-    have = set(os.listdir(f'{DATA}/taps/{taps_key}'))
+    tdir = f'{DATA}/taps/{taps_key}'  # S20 is written last: songs still being encoded are left out
+    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
     probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca)
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have]
     n0 = len(rows)
@@ -204,7 +209,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, mc.taps),
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
     acc, examples, wait_s, gpu_s = {}, 0, 0.0, 0.0
-    for step in range(start_step, tc.steps):
+    end = min(stop_at, tc.steps) if stop_at else tc.steps
+    for step in range(start_step, end):
         for g in opt.param_groups:
             g['lr'] = lr_at(step, tc)
         for _ in range(tc.accumulation):
@@ -236,7 +242,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                  'data_wait_s': round(wait_s, 1), 'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
                  'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2), 'fields': summarize(acc), 'skipped': skipped})
             acc = {}
-        if (step + 1) % tc.validate_every == 0 or step + 1 == tc.steps:
+        if (step + 1) % tc.validate_every == 0 or step + 1 in (tc.steps, end):
             v = evaluate(model, val, corpus.song, mc, dev, micro_batch)
             log({'event': 'val', 'step': step + 1, **v})
             if best is None or v['total'] < best:
@@ -446,8 +452,9 @@ def _s2_stream(rows, corpus_args, seed, micro_batch, taps, top_tap):
         def __iter__(self):
             info = torch.utils.data.get_worker_info()
             corpus = Corpus(**corpus_args)
-            smp = CoreSampler(corpus.train_rows(rows), corpus.chart, corpus.song, seed * 1000 + (info.id if info else 0),
-                              salient=corpus.salient_us)
+            smp = CoreSampler(corpus.train_rows(rows), corpus.chart, lambda sha: corpus.song(sha, in_memory=True),
+                              seed * 1000 + (info.id if info else 0), salient=corpus.salient_us, pool=POOL,
+                              residence=RESIDENCE)
             pad = M.silence_row()
             while True:
                 items = []
@@ -660,3 +667,40 @@ def controls(run_id: str, n_cores: int = 80):
     r = eval_controls.remote(run_id, n_cores=n_cores)
     Path(f'reports/controls_{run_id}.json').write_text(json.dumps(r, indent=1))
     print(json.dumps(r, indent=1))
+
+
+@app.function(image=image, volumes={DATA: data}, cpu=2.0, memory=8192, timeout=1800)
+def profile_data(taps_key: str = 'v3_pca512q_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'pca512_9-16-24',
+                 n_batches: int = 12, micro_batch: int = 8):
+    """Single-process cProfile of the training data path (draw -> collate), to find the CPU hot spots."""
+    import cProfile
+    import io
+    import pstats
+    from beatfcn.model.batch import collate
+    from beatfcn.train.data import Corpus, load_manifest
+    from beatfcn.train.loop import CoreSampler
+    corpus = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca)
+    rows = [r for r in load_manifest(DATA) if r['split'] == 'train']
+    smp = CoreSampler(corpus.train_rows(rows), corpus.chart, corpus.song, 1, salient=corpus.salient_us)
+    for _ in range(2):  # warm caches the same way a long-running worker would
+        items = smp.draw(4)
+    pr = cProfile.Profile()
+    t0 = time.time()
+    pr.enable()
+    for _ in range(n_batches):
+        items = []
+        while len(items) < micro_batch:
+            items += smp.draw(min(4, micro_batch - len(items)))
+        collate([a for a, _ in items], [b for _, b in items], taps, max(taps))
+    pr.disable()
+    dt = time.time() - t0
+    out = io.StringIO()
+    pstats.Stats(pr, stream=out).sort_stats('cumulative').print_stats(45)
+    return {'s_per_core': dt / (n_batches * micro_batch), 'skipped': dict(smp.skipped), 'profile': out.getvalue()[-9000:]}
+
+
+@app.local_entrypoint()
+def profile(n_batches: int = 12):
+    r = profile_data.remote(n_batches=n_batches)
+    print(json.dumps({k: v for k, v in r.items() if k != 'profile'}))
+    print(r['profile'])

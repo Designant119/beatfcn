@@ -36,10 +36,15 @@ class TrainConfig:
 
 class CoreSampler:
     """charts: list of dicts with keys chart_id, song, mode, duration_us; load(chart_id) -> Chart;
-    song_cache(song) -> SongCache."""
+    song_cache(song) -> SongCache.
 
-    def __init__(self, charts, load, song_cache, seed, salient=None):
+    pool > 0 keeps that many songs resident per mode (whole-file sequential reads, ideal for network
+    volumes); each resident song serves `residence` draws and is then replaced by a fresh random song.
+    Batches still mix songs; only the read pattern changes."""
+
+    def __init__(self, charts, load, song_cache, seed, salient=None, pool=0, residence=4):
         self.charts, self.load, self.song_cache = charts, load, song_cache
+        self.pool, self.residence, self.resident = pool, residence, {}
         self.salient = salient  # song -> spectral-flux peak times (us) for unselected reference evidence
         self.rng = np.random.default_rng(seed)
         by_mode = {}
@@ -64,13 +69,42 @@ class CoreSampler:
             raise F.SkipExample('illegal_target:' + ','.join(bad))
         return ex
 
+    def song_names(self, mode):
+        names = self._names = getattr(self, '_names', {})
+        if mode not in names:
+            names[mode] = list(self.by_mode[mode])
+        return names[mode]
+
+    def _resident(self, mode):
+        """Pick a resident song of this mode; count the use; evict after `residence` uses."""
+        slots = self.resident.setdefault(mode, [])
+        names = self.song_names(mode)
+        while len(slots) < min(self.pool, len(names)):
+            sha = names[self.rng.integers(len(names))]
+            cache = self.song_cache(sha)
+            if self.salient:  # prime the peak cache from the resident mel (no second read)
+                try:
+                    self.salient(sha, mel=cache.mel10)
+                except TypeError:
+                    pass
+            slots.append([sha, cache, 0])
+        k = int(self.rng.integers(len(slots)))
+        slot = slots[k]
+        slot[2] += 1
+        if slot[2] >= self.residence:
+            slots.pop(k)
+        return slot[0], slot[1]
+
     def draw(self, cores_per_song: int = 1):
         """Song-bucketed draw (design §10.3): one song cache read serves cores_per_song cores
         from that song's charts/requests. Returns a list of (core, song_cache)."""
         for _ in range(100):
             mode = self.modes[self.rng.choice(len(self.modes), p=self.mode_p)]
             songs = self.by_mode[mode]
-            song = list(songs)[self.rng.integers(len(songs))]
+            if self.pool:
+                song, cache = self._resident(mode)
+            else:
+                song, cache = self.song_names(mode)[self.rng.integers(len(songs))], None
             out = []
             for _ in range(4 * cores_per_song):
                 row = songs[song][self.rng.integers(len(songs[song]))]
@@ -82,7 +116,7 @@ class CoreSampler:
                 if len(out) == cores_per_song:
                     break
             if out:
-                cache = self.song_cache(song)
+                cache = cache if cache is not None else self.song_cache(song)
                 return [(ex, cache) for ex in out]
         raise RuntimeError(f'could not draw a valid core: {self.skipped}')
 
