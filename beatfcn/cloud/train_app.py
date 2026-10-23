@@ -148,11 +148,26 @@ def _pair_audit(rows, corpus, n_try=600, seed=0):
             'by_mode': {m: sum(1 for k in multi if k[1] == m) for m in ('mania_4k', 'phira')}}
 
 
+def _cached_songs(taps_key: str) -> set:
+    """Songs with a complete cache. Reads taps/<key>/_index.json when present; otherwise lists the
+    directory once (8.7k entries + exists checks = ~160 s of FUSE round-trips on the volume, measured)
+    and writes the index for every later launch."""
+    tdir = f'{DATA}/taps/{taps_key}'
+    idx = f'{tdir}/_index.json'
+    if os.path.exists(idx):
+        with open(idx) as f:
+            return set(json.load(f))
+    have = sorted(s for s in os.listdir(tdir) if not s.startswith('_') and os.path.exists(f'{tdir}/{s}/S20.npy'))
+    with open(idx + '.tmp', 'w') as f:
+        json.dump(have, f)
+    os.replace(idx + '.tmp', idx)
+    return set(have)
+
+
 def _select_rows(taps_key, taps, pca, whiten, songs_file, max_train_songs, val_songs_file):
     """Manifest rows usable with this cache, split into train / val as train() sees them."""
     from beatfcn.train.data import Corpus, load_manifest
-    tdir = f'{DATA}/taps/{taps_key}'  # S20 is written last: songs still being encoded are left out
-    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    have = _cached_songs(taps_key)
     probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have]
     n0 = len(rows)
@@ -456,7 +471,7 @@ def diagnose(n_cores: int = 3000, taps_key: str = 'v1_L8-16-24', select: bool = 
     from beatfcn.model.p1 import P1Config, P1Model
     from beatfcn.train.data import Corpus, load_manifest
     from beatfcn.train.loop import CoreSampler
-    have = set(os.listdir(f'{DATA}/taps/{taps_key}'))
+    have = _cached_songs(taps_key)
     rows = [r for r in load_manifest(DATA, select=select) if r['audio_sha256'] in have]
     corpus = Corpus(DATA, taps_key)
     smp = CoreSampler(corpus.train_rows(rows), corpus.chart, corpus.song, 1)
@@ -524,7 +539,7 @@ def eval_generation(run_id: str, n_cores: int = 200, taps_key: str = 'v1_L8-16-2
     cfg = P1Config(**{k: (tuple(v) if isinstance(v, list) else v) for k, v in ck['config'].items()})
     model = P1Model(cfg).cuda().eval()
     model.load_state_dict(ck['model'])
-    have = set(os.listdir(f'{DATA}/taps/{taps_key}'))
+    have = _cached_songs(taps_key)
     rows = [r for r in load_manifest(DATA, split=split) if r['audio_sha256'] in have]
     corpus = Corpus(DATA, taps_key, layers=cfg.taps, pca=pca)
     trows = corpus.train_rows(rows)
@@ -678,7 +693,7 @@ def train_s2(run_id: str, init_run: str, steps: int = 3000, micro_batch: int = 8
     z = np.load(f'{DATA}/pca/{pca}.npz')
     mu, comp = torch.from_numpy(z[f'mean_{mc.top_tap}']).cuda(), torch.from_numpy(z[f'comp_{mc.top_tap}']).cuda()
     ti = mc.taps.index(mc.top_tap)
-    have = set(os.listdir(f'{DATA}/taps/{taps_key}'))
+    have = _cached_songs(taps_key)
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca}
     corpus = Corpus(**corpus_args)
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and corpus.usable(r)]
@@ -796,7 +811,7 @@ def eval_controls(run_id: str, n_cores: int = 80, taps_key: str = 'v3_pca512q_L9
     cfg = P1Config(**{k: (tuple(v) if isinstance(v, list) else v) for k, v in ck['config'].items()})
     model = P1Model(cfg).cuda().eval()
     model.load_state_dict(ck['model'])
-    have = set(os.listdir(f'{DATA}/taps/{taps_key}'))
+    have = _cached_songs(taps_key)
     corpus = Corpus(DATA, taps_key, layers=cfg.taps, pca=pca)
     trows = corpus.train_rows([r for r in load_manifest(DATA, split='val') if r['audio_sha256'] in have])
     sweeps = {'density_notes_per_second': [(1.0, 1.5), (3.0, 4.0), (8.0, 10.0)],
@@ -899,8 +914,7 @@ def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 2
     import torch
     from beatfcn.model.batch import STATIC
     from beatfcn.train.data import load_manifest
-    tdir = f'{DATA}/taps/{taps_key}'
-    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    have = _cached_songs(taps_key)
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': tuple(taps), 'pca': pca}
     loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 3, 32, tuple(taps), max(taps), static=STATIC), batch_size=None,
@@ -1045,8 +1059,7 @@ def diag_worker(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca
     from beatfcn.train.loop import CoreSampler
     t = {}
     t0 = time.time()
-    tdir = f'{DATA}/taps/{taps_key}'
-    have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
+    have = _cached_songs(taps_key)
     t['listdir_exists_s'] = round(time.time() - t0, 1)
     t0 = time.time()
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
