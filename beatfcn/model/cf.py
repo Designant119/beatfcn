@@ -78,10 +78,12 @@ def collate_pairs(pairs, songs, taps, local_slice):
     from .batch import _slice
     B = len(pairs)
     N = max(len(p['support']) for p in pairs)
-    Dt = np.asarray(songs[0].taps[taps[0]][:1]).shape[-1]
+    Dt = songs[0].taps[taps[0]].shape[-1]
+    quant = all(hasattr(s.taps[l], 'raw') for s in songs for l in taps)
+    tdt = torch.int8 if quant else torch.float32
     C = FE.CORE_US // FE.CELL_US
-    bt = {'audio': torch.zeros(B, len(taps), FE.LOCAL_CELLS, 8, Dt), 'refs_a': torch.zeros(B, N, 9), 'refs_b': torch.zeros(B, N, 9),
-          'ref_audio': torch.zeros(B, N, len(taps), 8, Dt), 'refs_valid': torch.zeros(B, N, dtype=torch.bool),
+    bt = {'audio': torch.zeros(B, len(taps), FE.LOCAL_CELLS, 8, Dt, dtype=tdt), 'refs_a': torch.zeros(B, N, 9), 'refs_b': torch.zeros(B, N, 9),
+          'ref_audio': torch.zeros(B, N, len(taps), 8, Dt, dtype=tdt), 'refs_valid': torch.zeros(B, N, dtype=torch.bool),
           'cells_a': torch.zeros(B, C, dtype=torch.bool), 'cells_b': torch.zeros(B, C, dtype=torch.bool)}
     for i, (p, song) in enumerate(zip(pairs, songs)):
         cell0 = (p['c0'] - FE.HALO_US) // FE.CELL_US
@@ -100,11 +102,16 @@ def collate_pairs(pairs, songs, taps, local_slice):
                 bt['ref_audio'][i, r, j] = torch.from_numpy(a[0])
         bt['cells_a'][i, torch.from_numpy(p['cells_a'])] = True
         bt['cells_b'][i, torch.from_numpy(p['cells_b'])] = True
+    if quant:  # same compact transport as collate: dequantised on the device (batch.dequant)
+        sc = [np.broadcast_to(np.asarray(songs[0].taps[l].scale, np.float32), (Dt,)) for l in taps]
+        bt['tap_scale'] = torch.from_numpy(np.stack(sc).copy())
     return bt
 
 
 def cf_loss(model, bt, margin=0.5):
     """L_cf = 0.5 [softplus(m - s_A(T_A) + s_A(T_B)) + softplus(m - s_B(T_B) + s_B(T_A))], unique-cell means."""
+    from .batch import dequant
+    dequant(bt)
     ptr = model.ptr_features(bt['audio'])
     h0 = FE.HALO_US // FE.CELL_US
     core = ptr[:, h0:h0 + FE.CORE_US // FE.CELL_US]

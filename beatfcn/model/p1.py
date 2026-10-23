@@ -322,6 +322,8 @@ class P1Model(nn.Module):
     # ------------------------------------------------------------ forward
     def encode(self, bt):
         """Transformer over all rows; returns Y hidden states [B, G+1, d] and pointer features."""
+        from .batch import dequant
+        dequant(bt)  # in place, no-op when to_device already expanded the compact transport format
         c = self.c
         B = bt['mode'].shape[0]
         taps = torch.stack([ln(bt['audio'][:, j]) for j, ln in enumerate(self.tap_ln)], 1)  # [B,T,400,8,Dt]

@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 from . import features as FE
-from .batch import collate, MAX_NOTES
+from .batch import collate, dequant, MAX_NOTES
 from .p1 import P1Model, NEG
 
 
@@ -44,7 +44,7 @@ def generate_core(model: P1Model, ex: FE.CoreExample, song, observed_holds, runs
         # right-lookahead rows for the current teacher-forced prefix
         times = [c0 - 1] + [c0 + g['t_rel_us'] for g in work.groups]
         work.right = np.array([_right(t, observed_heads, runs) for t in times], np.float32)
-        bt = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in collate([work], [song], c.taps, c.top_tap).items()}
+        bt = dequant({k: (v.to(device) if torch.is_tensor(v) else v) for k, v in collate([work], [song], c.taps, c.top_tap).items()})
         h, pa, fi, _ = model.encode(bt)
         model._sel_core = None
         if model.c.selection:

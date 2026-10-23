@@ -141,7 +141,8 @@ def lr_at(step, c: TrainConfig):
 
 
 def to_device(bt, dev):
-    return {k: (v.to(dev, non_blocking=True) if torch.is_tensor(v) else v) for k, v in bt.items()}
+    from ..model.batch import dequant
+    return dequant({k: (v.to(dev, non_blocking=True) if torch.is_tensor(v) else v) for k, v in bt.items()})
 
 
 def merge(acc, met):

@@ -101,6 +101,7 @@ class QuantArray:
 
     def __init__(self, arr, scale):
         self.arr, self.scale = arr, scale  # scale: per-component (raw PCA units) or a scalar (whitened)
+        self.raw = arr  # int8 rows for collate's compact transport (dequantised on the device)
         self.shape, self.dtype = arr.shape, np.float32
 
     def __len__(self):

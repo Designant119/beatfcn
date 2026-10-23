@@ -25,12 +25,16 @@ class SongCache:
     duration_us: int
 
 
-def _slice(arr, start, n, fill=0.0):
-    """Rows [start, start+n) of arr with zero (or fill) outside; returns float32 ndarray and validity."""
-    out = np.full((n, *arr.shape[1:]), fill, np.float32)
+def _slice(arr, start, n, fill=0.0, dtype=np.float32):
+    """Rows [start, start+n) of arr with zero (or fill) outside; returns ndarray and validity.
+    Int8 PCA taps (anything with .raw) are sliced raw: dequantisation happens on the device (dequant)."""
+    src = getattr(arr, 'raw', arr)
+    if src is not arr:
+        dtype = np.int8
+    out = np.full((n, *arr.shape[1:]), fill, dtype)
     a, b = max(start, 0), min(start + n, arr.shape[0])
     if b > a:
-        out[a - start:b - start] = np.asarray(arr[a:b], np.float32)
+        out[a - start:b - start] = np.asarray(src[a:b], dtype)
     valid = np.zeros(n, bool)
     valid[max(a - start, 0):max(b - start, 0)] = True
     return out, valid
@@ -57,16 +61,20 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
     A = max([len(e.copy_times) for e in examples] + [1])
     pooled = [pool_summary(s.summary) for s in songs]
     S = max(len(p[0]) for p in pooled)
-    Dt = np.asarray(songs[0].taps[taps[0]][:1]).shape[-1]
+    Dt = songs[0].taps[taps[0]].shape[-1]
+    quant = all(hasattr(s.taps[l], 'raw') for s in songs for l in taps)
+    if not quant and any(hasattr(s.taps[l], 'raw') for s in songs for l in taps):
+        raise ValueError('mixed int8 / float tap caches in one batch')
+    tdt = torch.int8 if quant else torch.float32
     out = {
         'mode': torch.tensor([e.mode for e in examples]),
-        'audio': torch.zeros(B, len(taps), F.LOCAL_CELLS, 8, Dt), 'audio_valid': torch.zeros(B, F.LOCAL_CELLS, dtype=torch.bool),
-        'mel': torch.zeros(B, FRAMES_LOCAL, 128), 'cell_state': torch.zeros(B, F.LOCAL_CELLS, dtype=torch.long),
-        'summary': torch.zeros(B, S, 8, songs[0].summary.shape[-1]), 'summary_t': torch.zeros(B, S),
+        'audio': torch.zeros(B, len(taps), F.LOCAL_CELLS, 8, Dt, dtype=tdt), 'audio_valid': torch.zeros(B, F.LOCAL_CELLS, dtype=torch.bool),
+        'mel': torch.zeros(B, FRAMES_LOCAL, 128, dtype=torch.float16), 'cell_state': torch.zeros(B, F.LOCAL_CELLS, dtype=torch.long),
+        'summary': torch.zeros(B, S, 8, songs[0].summary.shape[-1], dtype=torch.float16), 'summary_t': torch.zeros(B, S),
         'summary_stats': torch.zeros(B, S, 6), 'summary_valid': torch.zeros(B, S, dtype=torch.bool),
         'known': torch.zeros(B, K, 9), 'known_valid': torch.zeros(B, K, dtype=torch.bool),
         'refs': torch.zeros(B, R, 9), 'refs_valid': torch.zeros(B, R, dtype=torch.bool),
-        'ref_audio': torch.zeros(B, R, len(taps), 8, Dt),
+        'ref_audio': torch.zeros(B, R, len(taps), 8, Dt, dtype=tdt),
         'controls': torch.full((B, len(F.CONTROL_FIELDS)), -1, dtype=torch.long),
         'allowed_types': torch.zeros(B, 4, dtype=torch.bool), 'lines': torch.zeros(B, dtype=torch.long),
         'bin_ok': torch.zeros(B, F.CORE_BINS, 10, dtype=torch.bool),
@@ -86,11 +94,11 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
             a, v = _slice(song.taps[layer], ex.song_cell0, F.LOCAL_CELLS)
             out['audio'][b, j] = torch.from_numpy(a)
         out['audio_valid'][b] = torch.from_numpy(v)
-        m, _ = _slice(song.mel10, ex.song_cell0 * F.FRAMES_PER_CELL, FRAMES_LOCAL)
+        m, _ = _slice(song.mel10, ex.song_cell0 * F.FRAMES_PER_CELL, FRAMES_LOCAL, dtype=np.float16)
         out['mel'][b] = torch.from_numpy(m)
         out['cell_state'][b] = torch.from_numpy(ex.cell_state)
         tok, centre, _ = pooled[b]
-        out['summary'][b, :len(tok)] = torch.from_numpy(tok)
+        out['summary'][b, :len(tok)] = torch.from_numpy(tok.astype(np.float16))
         out['summary_t'][b, :len(tok)] = torch.from_numpy(centre - ex.c0_us / F.SEC)
         stats = ex.summary_stats
         k = -(-len(stats) // F.MAX_SUMMARY)
@@ -161,13 +169,34 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
                 hold['ok_lo'].append(onset_abs + lo)
                 hold['ok_hi'].append(onset_abs + hi)
                 hold['onset_us'].append(onset_abs)
-                bl, _ = _slice(song.summary, b0, F.MAX_END_BLOCKS)
+                bl, _ = _slice(song.summary, b0, F.MAX_END_BLOCKS, dtype=np.float16)
                 hold['blocks'].append(bl)
                 det, _ = _slice(song.taps[top_tap], (b0 + blk) * END_BLOCK_CELLS, END_BLOCK_CELLS)
                 hold['detail'].append(det)
     out['hold_index'] = torch.tensor(hold_index, dtype=torch.long).reshape(-1, 3)
     for key in ('block', 'coarse', 'fine', 'ok_lo', 'ok_hi', 'onset_us'):
         out['hold_' + key] = torch.tensor(hold[key], dtype=torch.long)
-    out['hold_blocks'] = torch.from_numpy(np.stack(hold['blocks'])) if hold['blocks'] else torch.zeros(0, F.MAX_END_BLOCKS, 8, songs[0].summary.shape[-1])
-    out['hold_detail'] = torch.from_numpy(np.stack(hold['detail'])) if hold['detail'] else torch.zeros(0, END_BLOCK_CELLS, 8, Dt)
+    out['hold_blocks'] = (torch.from_numpy(np.stack(hold['blocks'])) if hold['blocks']
+                          else torch.zeros(0, F.MAX_END_BLOCKS, 8, songs[0].summary.shape[-1], dtype=torch.float16))
+    out['hold_detail'] = torch.from_numpy(np.stack(hold['detail'])) if hold['detail'] else torch.zeros(0, END_BLOCK_CELLS, 8, Dt, dtype=tdt)
+    if quant:  # per-tap dequantisation scale [T, Dt]; applied on the device by dequant()
+        sc = [np.broadcast_to(np.asarray(songs[0].taps[l].scale, np.float32), (Dt,)) for l in taps]
+        out['tap_scale'] = torch.from_numpy(np.stack(sc).copy())
+        out['tap_top'] = taps.index(top_tap)
     return out
+
+
+def dequant(bt: dict) -> dict:
+    """Device-side expansion of the compact transport format: int8 taps x scale, float16 -> float32.
+    Idempotent; collate keeps batches small so worker IPC, pinning and H2D copies stay cheap."""
+    sc = bt.pop('tap_scale', None)
+    if sc is not None:
+        top = bt.pop('tap_top', None)
+        bt['audio'] = bt['audio'].float() * sc[None, :, None, None, :]
+        bt['ref_audio'] = bt['ref_audio'].float() * sc[None, None, :, None, :]
+        if top is not None:
+            bt['hold_detail'] = bt['hold_detail'].float() * sc[top]
+    for k, v in bt.items():
+        if torch.is_tensor(v) and v.dtype == torch.float16:
+            bt[k] = v.float()
+    return bt
