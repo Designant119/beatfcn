@@ -40,7 +40,7 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
     import torch
     from beatfcn.train.data import Corpus
     from beatfcn.train.loop import CoreSampler
-    from beatfcn.model.batch import collate, collate_meta
+    from beatfcn.model.batch import collate, collate_meta, STATIC_CORE
 
     class Stream(torch.utils.data.IterableDataset):
         def __iter__(self):
@@ -49,7 +49,8 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, stat
             corpus = Corpus(**corpus_args)
             song_cache = corpus.song_info if meta else (lambda sha: corpus.song(sha, in_memory=True))
             smp = CoreSampler(corpus.train_rows(rows), corpus.chart, song_cache, seed * 1000 + wid,
-                              salient=corpus.salient_us, pool=POOL, residence=RESIDENCE)
+                              salient=corpus.salient_us, pool=POOL, residence=RESIDENCE,
+                              limits=STATIC_CORE if static else None)
             from beatfcn.model import features as F
             Dt, quant = corpus.tap_dim, corpus.quant
             while True:
@@ -903,9 +904,13 @@ def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 2
     t0 = time.time()
     first, skipped = next(it)
     t1 = time.time()
-    rest = [next(it)[0] for _ in range(n_batches - 1)]
+    print(json.dumps({'first_batch_s': round(t1 - t0, 1), 'skipped': skipped}), flush=True)
+    batches = [first]
+    for i in range(n_batches - 1):
+        b, skipped = next(it)
+        batches.append(b)
+        print(json.dumps({'batch': i + 2, 'elapsed_s': round(time.time() - t1, 1), 'skipped': skipped}), flush=True)
     t2 = time.time()
-    batches = [first] + rest
     os.makedirs(os.path.dirname(f'{DATA}/{out}'), exist_ok=True)
     torch.save({'batches': batches, 'taps': list(taps), 'taps_key': taps_key, 'pca': pca}, f'{DATA}/{out}')
     data.commit()

@@ -42,8 +42,11 @@ class CoreSampler:
     volumes); each resident song serves `residence` draws and is then replaced by a fresh random song.
     Batches still mix songs; only the read pattern changes."""
 
-    def __init__(self, charts, load, song_cache, seed, salient=None, pool=0, residence=4):
+    def __init__(self, charts, load, song_cache, seed, salient=None, pool=0, residence=4, limits=None):
+        """limits: per-core caps {'G','K','R','A','holds'} (static-shape training); cores beyond them are
+        skipped here, so a batch never has to be thrown away at collate time."""
         self.charts, self.load, self.song_cache = charts, load, song_cache
+        self.limits = limits
         self.pool, self.residence, self.resident = pool, residence, {}
         self.salient = salient  # song -> spectral-flux peak times (us) for unselected reference evidence
         self.rng = np.random.default_rng(seed)
@@ -66,6 +69,12 @@ class CoreSampler:
         ex = F.build_core(s, chart.events, c0, chart_row['duration_us'])
         if any(len(tg['notes']) > MAX_NOTES for tg in ex.groups):  # collate would raise mid-batch (crashed S1 at step ~130)
             raise F.SkipExample('group has more notes than MAX_NOTES')
+        if self.limits:
+            sizes = {'G': len(ex.groups), 'K': len(ex.known), 'R': len(ex.refs), 'A': len(ex.copy_times),
+                     'holds': sum(1 for tg in ex.groups for n in tg['notes'] if 'end_rel_us' in n)}
+            over = [k for k, v in sizes.items() if k in self.limits and v > self.limits[k]]
+            if over:
+                raise F.SkipExample('static limit: ' + ','.join(f'{k}={sizes[k]}' for k in over))
         bad = F.check_targets(ex)
         if bad:
             raise F.SkipExample('illegal_target:' + ','.join(bad))
