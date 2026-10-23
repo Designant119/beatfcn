@@ -139,7 +139,10 @@ def flex_attend(q, k, v, block_mask):
     global _FLEX
     if q.is_cuda:
         if _FLEX is None:
-            _FLEX = torch.compile(flex_attention, dynamic=True)
+            # static shapes: one kernel per packed-length bucket (PACK_BUCKET keeps that to a handful).
+            # dynamic=True failed to lower in torch 2.14.1 (unbacked symint from _local_scalar_dense).
+            torch._dynamo.config.cache_size_limit = max(torch._dynamo.config.cache_size_limit, 64)
+            _FLEX = torch.compile(flex_attention, dynamic=False)
         return _FLEX(q, k, v, block_mask=block_mask)
     Q, KV = block_mask.seq_lengths
     dense = create_mask(block_mask.mask_mod, None, None, Q, KV, device=q.device)
@@ -370,7 +373,7 @@ class P1Model(nn.Module):
         win = win[..., None].expand(-1, -1, -1, per_cell).reshape(B, len(kinds), FE.LOCAL_CELLS * per_cell)
         return torch.cat([win, rows], -1)[:, None]
 
-    PACK_BUCKET = 1024  # packed length is padded to a multiple of this: few distinct shapes for the compiled kernels
+    PACK_BUCKET = 2048  # packed length is padded to a multiple of this: few distinct shapes for the compiled kernels
 
     def _encode_packed(self, bt, xpad, taps, audio_t, row_t, row_timed, lens, valid, per_cell):
         """Run the layers on valid rows only (padding was 62% of rows) and return normed hidden states
