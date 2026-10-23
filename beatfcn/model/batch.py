@@ -53,14 +53,21 @@ def pool_summary(summary: np.ndarray, max_tokens: int = F.MAX_SUMMARY):
     return tokens, centre, k
 
 
+BUCKET = {'G': 32, 'K': 64, 'R': 64, 'A': 16, 'S': 64, 'H': 64}  # variable dims rounded up: few distinct batch shapes
+
+
+def _bucket(n, q):
+    return -(-max(n, 1) // q) * q
+
+
 def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[int, ...], top_tap: int) -> dict:
     B = len(examples)
-    G = max([len(e.groups) for e in examples] + [1])
-    K = max([len(e.known) for e in examples] + [1])
-    R = max([len(e.refs) for e in examples] + [1])
-    A = max([len(e.copy_times) for e in examples] + [1])
+    G = _bucket(max([len(e.groups) for e in examples] + [1]), BUCKET['G'])
+    K = _bucket(max([len(e.known) for e in examples] + [1]), BUCKET['K'])
+    R = _bucket(max([len(e.refs) for e in examples] + [1]), BUCKET['R'])
+    A = _bucket(max([len(e.copy_times) for e in examples] + [1]), BUCKET['A'])
     pooled = [pool_summary(s.summary) for s in songs]
-    S = max(len(p[0]) for p in pooled)
+    S = _bucket(max(len(p[0]) for p in pooled), BUCKET['S'])
     Dt = songs[0].taps[taps[0]].shape[-1]
     quant = all(hasattr(s.taps[l], 'raw') for s in songs for l in taps)
     if not quant and any(hasattr(s.taps[l], 'raw') for s in songs for l in taps):
@@ -174,12 +181,18 @@ def collate(examples: list[F.CoreExample], songs: list[SongCache], taps: tuple[i
                 hold['blocks'].append(bl)
                 det, _ = _slice(song.taps[top_tap], (b0 + blk) * END_BLOCK_CELLS, END_BLOCK_CELLS)
                 hold['detail'].append(det)
-    out['hold_index'] = torch.tensor(hold_index, dtype=torch.long).reshape(-1, 3)
+    H, Hp = len(hold_index), _bucket(len(hold_index), BUCKET['H'])
+    pad = Hp - H  # padded holds: index (0,0,0), zero targets/blocks/detail, hold_valid False (masked everywhere)
+    out['hold_index'] = torch.tensor(hold_index + [(0, 0, 0)] * pad, dtype=torch.long).reshape(-1, 3)
+    out['hold_valid'] = torch.arange(Hp) < H
     for key in ('block', 'coarse', 'fine', 'ok_lo', 'ok_hi', 'onset_us'):
-        out['hold_' + key] = torch.tensor(hold[key], dtype=torch.long)
-    out['hold_blocks'] = (torch.from_numpy(np.stack(hold['blocks'])) if hold['blocks']
-                          else torch.zeros(0, F.MAX_END_BLOCKS, 8, songs[0].summary.shape[-1], dtype=torch.float16))
-    out['hold_detail'] = torch.from_numpy(np.stack(hold['detail'])) if hold['detail'] else torch.zeros(0, END_BLOCK_CELLS, 8, Dt, dtype=tdt)
+        out['hold_' + key] = torch.tensor(hold[key] + [0] * pad, dtype=torch.long)
+    blocks = torch.zeros(Hp, F.MAX_END_BLOCKS, 8, songs[0].summary.shape[-1], dtype=torch.float16)
+    detail = torch.zeros(Hp, END_BLOCK_CELLS, 8, Dt, dtype=tdt)
+    if H:
+        blocks[:H] = torch.from_numpy(np.stack(hold['blocks']))
+        detail[:H] = torch.from_numpy(np.stack(hold['detail']))
+    out['hold_blocks'], out['hold_detail'] = blocks, detail
     if quant:  # per-tap dequantisation scale [T, Dt]; applied on the device by dequant()
         sc = [np.broadcast_to(np.asarray(songs[0].taps[l].scale, np.float32), (Dt,)) for l in taps]
         out['tap_scale'] = torch.from_numpy(np.stack(sc).copy())

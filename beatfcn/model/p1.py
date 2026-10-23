@@ -591,25 +591,37 @@ class P1Model(nn.Module):
         return self.norm(x)[:, nr:]
 
     def residual_logits(self, h_sel, fine, b_sel):
-        """h_sel [N,d], fine [N,1600,P] gathered per row, b_sel [N] chosen bin."""
-        f0 = FE.HALO_US // FE.BIN_US
-        idx = (f0 + b_sel[:, None] + torch.arange(-1, 2, device=b_sel.device)[None]).clamp(0, fine.shape[1] - 1)
-        ctx = fine.gather(1, idx[..., None].expand(-1, -1, fine.shape[-1])).flatten(1)
-        return self.res_head(torch.cat([self.res_q(h_sel), ctx], -1))
+        """Row-wise form (sampling): h_sel [N,d], fine [N,F,P] per row, b_sel [N] chosen bin -> [N,10]."""
+        return self.residual_logits_bg(h_sel[:, None], fine, b_sel[:, None])[:, 0]
+
+    def residual_logits_bg(self, h, fine, bins):
+        """All group slots at once: h [B,G,d], fine [B,F,P] (per core, gathered here), bins [B,G] -> [B,G,10]."""
+        B, G, _ = h.shape
+        P, f0 = fine.shape[-1], FE.HALO_US // FE.BIN_US
+        idx = (f0 + bins[..., None] + torch.arange(-1, 2, device=bins.device)).clamp(0, fine.shape[1] - 1)  # [B,G,3]
+        ctx = fine.gather(1, idx.reshape(B, G * 3)[..., None].expand(-1, -1, P)).reshape(B, G, 3 * P)
+        return self.res_head(torch.cat([self.res_q(h), ctx], -1))
 
     def gru_init(self, h_sel, ptr_audio_sel, fine_sel, t_new, right_new, busy):
-        """Audio read back at the chosen time (±3 cells × 8 bands) initialises the inner GRU."""
-        P = ptr_audio_sel.shape[-1]
-        cell = (FE.HALO_US // FE.CELL_US + (t_new * FE.SEC / FE.CELL_US).floor().long())
-        idx = (cell[:, None] + torch.arange(-3, 4, device=cell.device)[None]).clamp(0, FE.LOCAL_CELLS - 1)
-        win = ptr_audio_sel.gather(1, idx[..., None, None].expand(-1, -1, 8, P)).flatten(1, 2)  # [N,56,P]
-        w = torch.einsum('np,nkp->nk', self.gather_q(h_sel), win).div(math.sqrt(P)).softmax(-1)
-        pooled = torch.einsum('nk,nkp->np', w, win)
-        frame = (FE.HALO_US // FE.BIN_US + (t_new * FE.SEC / FE.BIN_US).floor().long()).clamp(0, fine_sel.shape[1] - 1)
-        f = fine_sel.gather(1, frame[:, None, None].expand(-1, 1, P))[:, 0]
+        """Row-wise form (sampling): one core per row."""
+        return self.gru_init_bg(h_sel[:, None], ptr_audio_sel, fine_sel, t_new[:, None], right_new[:, None], busy[:, None])[:, 0]
+
+    def gru_init_bg(self, h, ptr_audio, fine, t_new, right_new, busy):
+        """Audio read back at the chosen time (±3 cells × 8 bands) initialises the inner GRU, for all group
+        slots: h [B,G,d], ptr_audio [B,400,8,P], fine [B,F,P], t_new [B,G] s, right_new [B,G,4], busy [B,G,4].
+        Gathers per core instead of materialising per-row copies of the audio (1.2 GB per step before)."""
+        B, G, _ = h.shape
+        P = ptr_audio.shape[-1]
+        cell = FE.HALO_US // FE.CELL_US + (t_new * FE.SEC / FE.CELL_US).floor().long()
+        idx = (cell[..., None] + torch.arange(-3, 4, device=cell.device)).clamp(0, FE.LOCAL_CELLS - 1)  # [B,G,7]
+        win = ptr_audio.gather(1, idx.reshape(B, G * 7)[..., None, None].expand(-1, -1, 8, P)).reshape(B, G, 56, P)
+        w = torch.einsum('bgp,bgkp->bgk', self.gather_q(h), win).div(math.sqrt(P)).softmax(-1)
+        pooled = torch.einsum('bgk,bgkp->bgp', w, win)
+        frame = (FE.HALO_US // FE.BIN_US + (t_new * FE.SEC / FE.BIN_US).floor().long()).clamp(0, fine.shape[1] - 1)
+        f = fine.gather(1, frame[..., None].expand(-1, -1, P))  # [B,G,P]
         if not self.c.gather_after_time:  # diagnostic: GRU starts from the outer state only
             pooled, f = torch.zeros_like(pooled), torch.zeros_like(f)
-        return torch.tanh(self.init(torch.cat([h_sel, pooled, f, self.right_g(self._right_feats(right_new)), busy.float()], -1)))
+        return torch.tanh(self.init(torch.cat([h, pooled, f, self.right_g(self._right_feats(right_new)), busy.float()], -1)))
 
     def forward(self, bt):
         """Teacher-forced losses for a collated batch. Returns (total_loss, metrics)."""
@@ -641,17 +653,15 @@ class P1Model(nn.Module):
         binx = torch.cat([bt['grp_bin'], torch.zeros(B, 1, dtype=torch.long, device=dev)], 1)
         tgt = torch.where(has & (copy >= 0), 1 + FE.CORE_BINS + copy, torch.where(has, 1 + binx, tgt))
         m['time'] = masked_ce(logits, tgt, row_valid, mask, 'time')
-        # 1 ms residual for free-bin targets
+        # 1 ms residual for free-bin targets; every group slot is computed, padding is masked (static shapes)
+        hg = h[:, :G]  # Y row i predicts group i
         free = bt['grp_valid'] & (bt['grp_copy'] < 0)
-        bi, gi = free.nonzero(as_tuple=True)
-        if len(bi):
-            res = self.residual_logits(h[bi, gi], fine[bi], bt['grp_bin'][bi, gi])
-            res_mask = ok[bi, gi, bt['grp_bin'][bi, gi]]
-            m['residual'] = masked_ce(res, bt['grp_res'][bi, gi], torch.ones_like(bi, dtype=torch.bool), res_mask, 'residual')
-        # inner GRU over every valid group (teacher forced)
-        bi, gi = bt['grp_valid'].nonzero(as_tuple=True)
-        if len(bi):
-            self._inner(bt, h, ptr_audio, fine, bi, gi, m)
+        gbin = bt['grp_bin'].clamp(min=0)
+        res = self.residual_logits_bg(hg, fine, gbin)
+        res_mask = ok.gather(2, gbin[..., None, None].expand(-1, -1, 1, ok.shape[-1]))[:, :, 0]  # [B,G,10]
+        m['residual'] = masked_ce(res, bt['grp_res'], free, res_mask, 'residual')
+        # inner GRU over every group slot (teacher forced; invalid slots masked out of every loss)
+        self._inner(bt, hg, ptr_audio, fine, m)
         total, metrics, illegal = 0.0, {}, 0
         for k, (l, n, cnum, bad) in m.items():
             total = total + l  # zero when the head had no valid rows
@@ -660,31 +670,34 @@ class P1Model(nn.Module):
         metrics['_illegal'] = illegal  # device tensor; checked by loop.summarize
         return total, metrics
 
-    def _inner(self, bt, h, ptr_audio, fine, bi, gi, m):
-        N = len(bi)
-        dev = h.device
-        hs = self.gru_init(h[bi, gi], ptr_audio[bi], fine[bi], bt['grp_t'][bi, gi], bt['right_new'][bi, gi], bt['busy'][bi, gi])
-        n_notes = bt['grp_n'][bi, gi]
+    def _inner(self, bt, hg, ptr_audio, fine, m):
+        """Inner note decoder over all B x G group slots (fixed MAX_NOTES + 1 GRU steps; masks carry validity)."""
+        B, G, _ = hg.shape
+        N, dev = B * G, hg.device
+        valid = bt['grp_valid'].reshape(N)
+        hs = self.gru_init_bg(hg, ptr_audio, fine, bt['grp_t'], bt['right_new'], bt['busy']).reshape(N, -1)
+        n_notes = (bt['grp_n'] * bt['grp_valid']).reshape(N)
         tl, ts, tx = self._target_loc(bt)
-        typ, lane, line = bt['note_type'][bi, gi], bt['note_lane'][bi, gi], tl[bi, gi]
-        side, x, dur = ts[bi, gi], tx[bi, gi], bt['note_dur'][bi, gi]
-        true_line, true_side, true_x = bt['note_line'][bi, gi], bt['note_side'][bi, gi], bt['note_x'][bi, gi]
-        mode = bt['mode'][bi]
-        allowed = bt['allowed_types'][bi] & torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.bool, device=dev)[mode]
-        n_lines = bt['lines'][bi]
-        used = bt['busy'][bi, gi].clone()
+        flat = lambda t: t.reshape(N, *t.shape[2:])
+        typ, lane, line = flat(bt['note_type']), flat(bt['note_lane']), flat(tl)
+        side, x, dur = flat(ts), flat(tx), flat(bt['note_dur'])
+        true_line, true_side, true_x = flat(bt['note_line']), flat(bt['note_side']), flat(bt['note_x'])
+        mode = bt['mode'].repeat_interleave(G)
+        table = torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.bool, device=dev)
+        allowed = (bt['allowed_types'] & table[bt['mode']]).repeat_interleave(G, 0)
+        n_lines = bt['lines'].repeat_interleave(G)
+        used = flat(bt['busy']).clone()
         acc = {k: [] for k in ('cont', 'type', 'lane', 'line', 'side')}
         x_nll, o2_steps = [], []
         inp = self.start.expand(N, -1)
-        last = bt.get('max_notes')  # host int from collate: the loop length needs no device query
         for j in range(MAX_NOTES + 1):
             hs = self.gru_cell(inp, hs)
-            active = j <= n_notes  # this step exists (decides continue or emits note j)
+            active = (j <= n_notes) & valid  # this step exists (decides continue or emits note j)
             if j >= 1:
                 acc['cont'].append((self.cont(hs), (j < n_notes).long(), active, None))
-            emit = j < n_notes
-            if (j >= last) if last is not None else not emit.any():
+            if j == MAX_NOTES:
                 break
+            emit = (j < n_notes) & valid
             jt = typ[:, j]
             acc['type'].append((self.type_h(hs), jt, emit, allowed))
             o1 = hs + self.type_c(jt)
@@ -697,8 +710,7 @@ class P1Model(nn.Module):
                 acc['line'].append((line_logits, true_line[:, j].clamp(min=0), is_p, line_mask))
                 le = self.line_tab(true_line[:, j].clamp(0, FE.MAX_LINES - 1))
                 acc['side'].append((self.side_h(torch.cat([o1, le], -1)), true_side[:, j].clamp(min=0), is_p, None))
-                if is_p.any():
-                    x_nll.append(logistic_mixture_nll(self.x_h(torch.cat([o1, le], -1))[is_p], true_x[is_p, j]))
+                x_nll.append((logistic_mixture_nll(self.x_h(torch.cat([o1, le], -1)), true_x[:, j]), is_p))
             else:
                 le = torch.zeros(N, 64, device=dev)  # Phira placement unknown to the generator
             loc = torch.where(mode[:, None] == 0, torch.cat([onehot(lane[:, j].clamp(min=0), 4).float(),
@@ -716,18 +728,17 @@ class P1Model(nn.Module):
             mk = None if items[0][3] is None else torch.cat([mm for _, _, _, mm in items])
             m[k] = masked_ce(lg, tg, vl, mk, k)
         if x_nll:
-            xn = torch.cat(x_nll)
+            nll = torch.cat([a for a, _ in x_nll])
+            w = torch.cat([b for _, b in x_nll]).float()
+            n = w.sum()
             zero = torch.zeros((), dtype=torch.long, device=dev)
-            m['x'] = (xn.mean(), torch.full((), len(xn), device=dev), zero, zero)
-        H = bt['hold_index'].shape[0]  # shapes are host metadata: no sync
-        if H:
-            # hold k = note (b, g, n): its GRU row is the rank of group (b, g) among valid groups (bi, gi order)
-            hi = bt['hold_index']
-            rank = (bt['grp_valid'].reshape(-1).cumsum(0) - 1).view_as(bt['grp_valid'])
-            o = torch.stack(o2_steps, 1)[rank[hi[:, 0], hi[:, 1]], hi[:, 2]]
-            self._hold(bt, torch.arange(H, device=dev), o, m)
+            m['x'] = ((nll * w).sum() / n.clamp(min=1), n, zero, zero)
+        hi = bt['hold_index']  # [H,3] (b, g, n); collate pads holds and marks them in hold_valid
+        if hi.shape[0]:
+            o = torch.stack(o2_steps, 1)[hi[:, 0] * G + hi[:, 1], hi[:, 2]]
+            self._hold(bt, torch.arange(hi.shape[0], device=dev), o, m, bt.get('hold_valid'))
 
-    def _hold(self, bt, k, o, m):
+    def _hold(self, bt, k, o, m, valid=None):
         dev = bt['mode'].device
         onset = bt['hold_onset_us'][k]
         lo, hi = bt['hold_ok_lo'][k], bt['hold_ok_hi'][k]
@@ -737,7 +748,7 @@ class P1Model(nn.Module):
         blk_mask = (bstart < hi[:, None] + 1) & (bstart + FE.BLOCK_US > lo[:, None])
         feats = self.blk_band(self.sum_ln(bt['hold_blocks'][k])).flatten(-2)  # [H,16,256]
         blk_logits = torch.einsum('hd,hkd->hk', self.blk_q(o), feats) / 16 + self.blk_off.weight.T
-        ones = torch.ones(len(k), dtype=torch.bool, device=dev)
+        ones = torch.ones(len(k), dtype=torch.bool, device=dev) if valid is None else valid[k]
         m['end_block'] = masked_ce(blk_logits, bt['hold_block'][k], ones, blk_mask, 'end_block')
         # block detail is revealed only for the (teacher-forced) chosen block
         tb = bt['hold_block'][k]
