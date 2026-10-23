@@ -100,7 +100,7 @@ class QuantArray:
     """int8 PCA taps on a memmap, dequantised per slice (only the rows a core reads are touched)."""
 
     def __init__(self, arr, scale):
-        self.arr, self.scale = arr, scale
+        self.arr, self.scale = arr, scale  # scale: per-component (raw PCA units) or a scalar (whitened)
         self.shape, self.dtype = arr.shape, np.float32
 
     def __len__(self):
@@ -111,12 +111,14 @@ class QuantArray:
 
 
 class Corpus:
-    def __init__(self, root=DATA, taps_key=None, layers=(8, 16, 24), apply_codec_constant=True, pca=''):
+    def __init__(self, root=DATA, taps_key=None, layers=(8, 16, 24), apply_codec_constant=True, pca='', whiten=False):
         self.root, self.taps_key, self.layers = root, taps_key, tuple(layers)
         self.scale = {}
         if pca:  # int8 PCA taps: per-component dequantisation scale
             z = np.load(os.path.join(root, 'pca', f'{pca}.npz'))
             self.scale = {l: z[f'scale_{l}'].astype(np.float32) for l in self.layers}
+            if whiten:  # scale = 4 sigma / 127, so q * 4/127 = y / sigma: unit variance per component
+                self.scale = {l: np.float32(4 / 127) for l in self.layers}
         self.apply_c = apply_codec_constant
         self._rows = {}
         self._charts = {}

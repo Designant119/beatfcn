@@ -132,7 +132,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           taps: tuple = (8, 16, 24), workers: int = 28, val_cores: int = 256, max_train_songs: int = 0,
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
-          pca: str = '', cf_force: bool = False, stop_at: int = 0):
+          pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner)."""
     import numpy as np
@@ -152,7 +152,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
 
     tdir = f'{DATA}/taps/{taps_key}'  # S20 is written last: songs still being encoded are left out
     have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
-    probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca)
+    probe = Corpus(root=DATA, taps_key=taps_key, layers=taps, pca=pca, whiten=whiten)
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have]
     n0 = len(rows)
     rows = [r for r in rows if probe.usable(r)]
@@ -168,7 +168,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     if val_songs_file:  # fixed validation songs so runs with different caches stay comparable
         vallow = set(open(val_songs_file).read().split())
         val_rows = [r for r in val_rows if r['audio_sha256'] in vallow]
-    corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca}
+    corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca, 'whiten': whiten}
     mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **(variant or {}))
     tc = TrainConfig(steps=steps, micro_batch=micro_batch, accumulation=accumulation, lr=lr, warmup=warmup,
                      validate_every=validate_every, val_cores=val_cores)
@@ -247,8 +247,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             log({'event': 'val', 'step': step + 1, **v})
             if best is None or v['total'] < best:
                 best = v['total']
-                torch.save({'model': model.state_dict(), 'config': asdict(mc), 'step': step + 1, 'val': v}, f'{run}/best.pt')
-            torch.save({'model': model.state_dict(), 'opt': opt.state_dict(), 'config': asdict(mc), 'step': step + 1,
+                torch.save({'model': model.state_dict(), 'config': asdict(mc), 'data': corpus_args, 'step': step + 1, 'val': v}, f'{run}/best.pt')
+            torch.save({'model': model.state_dict(), 'opt': opt.state_dict(), 'config': asdict(mc), 'data': corpus_args, 'step': step + 1,
                         'best': best}, f'{run}/last.pt.tmp')
             os.replace(f'{run}/last.pt.tmp', f'{run}/last.pt')
             data.commit()
