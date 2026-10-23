@@ -76,10 +76,13 @@ class CoreSampler:
         return names[mode]
 
     def _resident(self, mode):
-        """Pick a resident song of this mode; count the use; evict after `residence` uses."""
+        """Pick a resident song of this mode; count the use; evict after `residence` uses.
+
+        The pool grows by at most one song per draw (starting from one), so a fresh worker yields its first
+        batch after a single song read instead of reading the whole pool first (6 x ~108 MB per mode)."""
         slots = self.resident.setdefault(mode, [])
         names = self.song_names(mode)
-        while len(slots) < min(self.pool, len(names)):
+        if len(slots) < min(self.pool, len(names)):
             sha = names[self.rng.integers(len(names))]
             cache = self.song_cache(sha)
             if self.salient:  # prime the peak cache from the resident mel (no second read)

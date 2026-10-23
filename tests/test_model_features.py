@@ -70,3 +70,18 @@ class FeatureTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PoolTests(unittest.TestCase):
+    def test_resident_pool_reads_one_song_before_first_draw_and_grows(self):
+        from beatfcn.train.loop import CoreSampler
+        from events_helpers import synthetic_mania, DURATION
+        chart = synthetic_mania(0)
+        rows = [{'chart_id': f'c{i}', 'song': f's{i}', 'mode': 'mania_4k', 'duration_us': DURATION} for i in range(20)]
+        reads = []
+        smp = CoreSampler(rows, lambda cid: chart, lambda sha: reads.append(sha) or object(), 0, pool=6, residence=16)
+        smp.draw(4)
+        self.assertEqual(len(reads), 1)
+        for _ in range(10):
+            smp.draw(4)
+        self.assertEqual(len(smp.resident['mania_4k']), 6)

@@ -132,23 +132,36 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           taps: tuple = (8, 16, 24), workers: int = 16, val_cores: int = 256, max_train_songs: int = 0,
           lr: float = 2e-4, warmup: int = 500, validate_every: int = 500, tap_dim: int = 1024, songs_file: str = '',
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
-          pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False):
+          pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
+          device: str = 'cuda'):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
-    with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner)."""
+    with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
+
+    also: [{'run_id': ..., 'variant': {...}}, ...] further models trained in this container on the SAME
+    micro-batches (paired comparison; the data path, CPUs and container overheads are paid once). Each run
+    keeps its own optimiser, checkpoints and log under /data/runs/{run_id}."""
     import numpy as np
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
     from beatfcn.train.data import Corpus, load_manifest
     from beatfcn.train.loop import CoreSampler, TrainConfig, evaluate, lr_at, merge, summarize, to_device
-    run = f'{DATA}/runs/{run_id}'
-    os.makedirs(run, exist_ok=True)
-    logf = open(f'{run}/log.jsonl', 'a')
+    from beatfcn.cloud.gpu_util import GpuUtil
 
-    def log(rec):
-        rec['ts'] = time.time()
-        logf.write(json.dumps(rec) + '\n')
-        logf.flush()
-        print(json.dumps(rec)[:600], flush=True)
+    class Run:
+        def __init__(self, rid, var):
+            self.id, self.dir = rid, f'{DATA}/runs/{rid}'
+            os.makedirs(self.dir, exist_ok=True)
+            self.logf = open(f'{self.dir}/log.jsonl', 'a')
+            self.mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **(var or {}))
+            self.acc, self.best, self.start, self.use_cf = {}, None, 0, False
+
+        def log(self, rec):
+            rec['ts'] = time.time()
+            self.logf.write(json.dumps(rec) + '\n')
+            self.logf.flush()
+            print(self.id, json.dumps(rec)[:600], flush=True)
+    runs = [Run(run_id, variant)] + [Run(a['run_id'], a.get('variant')) for a in (also or [])]
+    log_all = lambda rec: [r.log(dict(rec)) for r in runs]
 
     tdir = f'{DATA}/taps/{taps_key}'  # S20 is written last: songs still being encoded are left out
     have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
@@ -169,93 +182,108 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         vallow = set(open(val_songs_file).read().split())
         val_rows = [r for r in val_rows if r['audio_sha256'] in vallow]
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': taps, 'pca': pca, 'whiten': whiten}
-    mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **(variant or {}))
     tc = TrainConfig(steps=steps, micro_batch=micro_batch, accumulation=accumulation, lr=lr, warmup=warmup,
                      validate_every=validate_every, val_cores=val_cores)
     corpus = Corpus(**corpus_args)
+    # the training stream starts first: its workers warm up while validation cores are built
+    stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed, micro_batch, tuple(taps), max(taps)),
+                                         batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
+                                         pin_memory=device == 'cuda')
+    it = iter(stream)
     vsmp = CoreSampler(corpus.train_rows(val_rows), corpus.chart, corpus.song, 7, salient=corpus.salient_us)
     t0 = time.time()
     val = vsmp.fixed(val_cores, 20261022)
-    log({'event': 'data', 'train_charts': len(train_rows), 'train_songs': len({r['audio_sha256'] for r in train_rows}),
-         'val_charts': len(val_rows), 'val_cores': len(val), 'val_build_s': round(time.time() - t0, 1),
-         'dup_collapsed_charts': dup_rows, 'dup_ineligible_dropped': n0 - len(rows),
-         'modes': {m: sum(r['mode'] == m for r in train_rows) for m in ('mania_4k', 'phira')}})
-    dev = torch.device('cuda')
-    torch.manual_seed(tc.seed)
-    model = P1Model(mc).to(dev)
-    decay = [p for p in model.parameters() if p.ndim >= 2]
-    other = [p for p in model.parameters() if p.ndim < 2]
-    opt = torch.optim.AdamW([{'params': decay, 'weight_decay': tc.weight_decay}, {'params': other, 'weight_decay': 0.0}],
-                            lr=tc.lr, betas=(0.9, 0.95), fused=True)
-    log({'event': 'start', 'model': asdict(mc), 'train': asdict(tc), 'params': sum(p.numel() for p in model.parameters()),
-         'gpu': torch.cuda.get_device_name()})
-    start_step, best = 0, None
-    if os.path.exists(f'{run}/last.pt'):  # resume after preemption / restart (same run id)
-        ck = torch.load(f'{run}/last.pt', map_location='cuda', weights_only=False)
-        model.load_state_dict(ck['model'])
-        opt.load_state_dict(ck['opt'])
-        start_step, best = ck['step'], ck.get('best')
-        log({'event': 'resume', 'step': start_step, 'best': best})
-    stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed, micro_batch, mc.taps, mc.top_tap),
-                                         batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
-                                         pin_memory=True)
-    it = iter(stream)
-    use_cf = False
-    if mc.selection:
+    log_all({'event': 'data', 'train_charts': len(train_rows), 'train_songs': len({r['audio_sha256'] for r in train_rows}),
+             'val_charts': len(val_rows), 'val_cores': len(val), 'val_build_s': round(time.time() - t0, 1),
+             'dup_collapsed_charts': dup_rows, 'dup_ineligible_dropped': n0 - len(rows), 'paired_runs': [r.id for r in runs],
+             'modes': {m: sum(r['mode'] == m for r in train_rows) for m in ('mania_4k', 'phira')}})
+    dev = torch.device(device)
+    cuda = dev.type == 'cuda'
+    for r in runs:
+        torch.manual_seed(tc.seed)
+        r.model = P1Model(r.mc).to(dev)
+        decay = [p for p in r.model.parameters() if p.ndim >= 2]
+        other = [p for p in r.model.parameters() if p.ndim < 2]
+        r.opt = torch.optim.AdamW([{'params': decay, 'weight_decay': tc.weight_decay}, {'params': other, 'weight_decay': 0.0}],
+                                  lr=tc.lr, betas=(0.9, 0.95), fused=True)
+        r.log({'event': 'start', 'model': asdict(r.mc), 'train': asdict(tc), 'params': sum(p.numel() for p in r.model.parameters()),
+               'gpu': torch.cuda.get_device_name() if cuda else device})
+        if os.path.exists(f'{r.dir}/last.pt'):  # resume after preemption / restart (same run id)
+            ck = torch.load(f'{r.dir}/last.pt', map_location=dev, weights_only=False)
+            r.model.load_state_dict(ck['model'])
+            r.opt.load_state_dict(ck['opt'])
+            r.start, r.best = ck['step'], ck.get('best')
+            r.log({'event': 'resume', 'step': r.start, 'best': r.best})
+    if len({r.start for r in runs}) != 1:
+        raise RuntimeError(f'paired runs must resume from the same step: {[(r.id, r.start) for r in runs]}')
+    start_step = runs[0].start
+    if any(r.mc.selection for r in runs):
         audit = _pair_audit(train_rows, _audit_corpus(corpus_args, train_rows))
-        use_cf = cf_force or (audit['eligible_groups_seen'] >= 50 and audit['est_eligible_pairs'] >= 300)
-        log({'event': 'cf_audit', **audit, 'cf_enabled': use_cf})
-        if use_cf:
-            cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, mc.taps),
+        cf_ok = cf_force or (audit['eligible_groups_seen'] >= 50 and audit['est_eligible_pairs'] >= 300)
+        for r in runs:
+            if r.mc.selection:
+                r.use_cf = cf_ok
+                r.log({'event': 'cf_audit', **audit, 'cf_enabled': cf_ok})
+        if cf_ok:
+            cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, tuple(taps)),
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
-    from beatfcn.cloud.gpu_util import GpuUtil
     mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
-    acc, examples, wait_s, gpu_s = {}, 0, 0.0, 0.0
+    examples, wait_s, gpu_s = 0, 0.0, 0.0
     end = min(stop_at, tc.steps) if stop_at else tc.steps
     for step in range(start_step, end):
-        for g in opt.param_groups:
-            g['lr'] = lr_at(step, tc)
+        for r in runs:
+            for g in r.opt.param_groups:
+                g['lr'] = lr_at(step, tc)
         for _ in range(tc.accumulation):
             tw = time.time()
             bt, skipped = next(it)
             bt = to_device(bt, dev)
-            bt['w_select'] = 0.2 * min(1.0, (step + 1) / 1000)
             tg = time.time()
             wait_s += tg - tw
-            with torch.autocast('cuda', dtype=torch.bfloat16):
-                loss, met = model(bt)
-            (loss / tc.accumulation).backward()
+            for r in runs:  # same micro-batch for every paired run
+                b = dict(bt)
+                b['w_select'] = 0.2 * min(1.0, (step + 1) / 1000)
+                with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
+                    loss, met = r.model(b)
+                (loss / tc.accumulation).backward()
+                merge(r.acc, met)
             gpu_s += time.time() - tg  # host-side issue time (no per-micro-batch sync: the device runs ahead)
-            merge(acc, met)
             examples += bt['mode'].shape[0]
-        if use_cf and step >= cf_start and step % cf_every == 0:
+        cf_runs = [r for r in runs if r.use_cf]
+        if cf_runs and step >= cf_start and step % cf_every == 0:
             from beatfcn.model import cf as CF
             cbt = to_device(next(cf_it), dev)
-            with torch.autocast('cuda', dtype=torch.bfloat16):
-                l_cf, cf_acc = CF.cf_loss(model, cbt)
-            (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
-            merge(acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
-        gn = torch.nn.utils.clip_grad_norm_(model.parameters(), tc.clip)
-        opt.step()
-        opt.zero_grad(set_to_none=True)
+            for r in cf_runs:
+                with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
+                    l_cf, cf_acc = CF.cf_loss(r.model, dict(cbt))
+                (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
+                merge(r.acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
+        for r in runs:
+            r.gn = torch.nn.utils.clip_grad_norm_(r.model.parameters(), tc.clip)
+            r.opt.step()
+            r.opt.zero_grad(set_to_none=True)
         if (step + 1) % tc.log_every == 0:
-            log({'event': 'train', 'step': step + 1, 'lr': lr_at(step, tc), 'grad_norm': float(gn), 'examples': examples,
-                 'data_wait_s': round(wait_s, 1), 'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
-                 'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2), 'gpu_util': mon.take()['util_mean'],
-                 'fields': summarize(acc), 'skipped': skipped})
-            acc = {}
+            shared = {'step': step + 1, 'lr': lr_at(step, tc), 'examples': examples, 'data_wait_s': round(wait_s, 1),
+                      'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
+                      'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2) if cuda else None,
+                      'gpu_util': mon.take()['util_mean'], 'skipped': skipped}
+            for r in runs:
+                r.log({'event': 'train', **shared, 'grad_norm': float(r.gn), 'fields': summarize(r.acc)})
+                r.acc = {}
         if (step + 1) % tc.validate_every == 0 or step + 1 in (tc.steps, end):
-            v = evaluate(model, val, corpus.song, mc, dev, micro_batch)
-            log({'event': 'val', 'step': step + 1, **v})
-            if best is None or v['total'] < best:
-                best = v['total']
-                torch.save({'model': model.state_dict(), 'config': asdict(mc), 'data': corpus_args, 'step': step + 1, 'val': v}, f'{run}/best.pt')
-            torch.save({'model': model.state_dict(), 'opt': opt.state_dict(), 'config': asdict(mc), 'data': corpus_args, 'step': step + 1,
-                        'best': best}, f'{run}/last.pt.tmp')
-            os.replace(f'{run}/last.pt.tmp', f'{run}/last.pt')
+            for r in runs:
+                v = evaluate(r.model, val, corpus.song, r.mc, dev, micro_batch)
+                r.log({'event': 'val', 'step': step + 1, **v})
+                if r.best is None or v['total'] < r.best:
+                    r.best = v['total']
+                    torch.save({'model': r.model.state_dict(), 'config': asdict(r.mc), 'data': corpus_args, 'step': step + 1,
+                                'val': v}, f'{r.dir}/best.pt')
+                torch.save({'model': r.model.state_dict(), 'opt': r.opt.state_dict(), 'config': asdict(r.mc), 'data': corpus_args,
+                            'step': step + 1, 'best': r.best}, f'{r.dir}/last.pt.tmp')
+                os.replace(f'{r.dir}/last.pt.tmp', f'{r.dir}/last.pt')
             data.commit()
     data.commit()
-    return {'run': run_id, 'best_val_total': best, 'elapsed_s': round(time.time() - t0, 1), 'examples': examples}
+    return {'runs': {r.id: r.best for r in runs}, 'elapsed_s': round(time.time() - t0, 1), 'examples': examples}
 
 
 @app.local_entrypoint()
