@@ -327,7 +327,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     scale_dev = None  # per-tap int8 scales once on the device: no per-batch host->device copy in attach_audio
     if corpus.quant:
         scale_dev = torch.stack([torch.broadcast_to(torch.as_tensor(np.asarray(corpus.scale[l], np.float32)), (corpus.tap_dim,))
-                                 for l in taps]).clone().to(dev)
+                                 for l in taps]).clone().to(torch.device(device))
     raw_it, queue = iter(stream), deque()
     worker_audits = {}
     samples_file = open(f'{runs[0].dir}/samples.jsonl', 'a')
