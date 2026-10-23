@@ -22,7 +22,7 @@ app = modal.App('beatfcn-infer')
 data = modal.Volume.from_name('beatfcn-data', create_if_missing=True)
 weights = modal.Volume.from_name('beatfcn-weights', create_if_missing=True)
 image = (modal.Image.debian_slim(python_version='3.12').apt_install('ffmpeg')
-         .pip_install('torch==2.7.1', index_url='https://download.pytorch.org/whl/cu126')
+         .pip_install('torch==2.14.1', index_url='https://download.pytorch.org/whl/cu126')
          .pip_install('numpy==2.2.6', 'safetensors==0.5.3', 'pyyaml==6.0.3', 'jsonschema==4.26.0')
          .add_local_python_source('beatfcn'))
 

@@ -132,14 +132,18 @@ def onehot(x, n):
 
 
 def flex_attend(q, k, v, block_mask):
-    """FlexAttention; compiled on CUDA (fused, skips fully masked blocks), eager reference elsewhere."""
-    from torch.nn.attention.flex_attention import flex_attention
+    """FlexAttention, compiled on CUDA (fused; skips the blocks the BlockMask leaves out). Off CUDA (tests,
+    local equivalence checks) the same element-exact mask_mod is evaluated densely and fed to SDPA, which
+    is the reference semantics of the block mask; FlexAttention has no CPU backward in recent torch."""
+    from torch.nn.attention.flex_attention import flex_attention, create_mask
     global _FLEX
     if q.is_cuda:
         if _FLEX is None:
             _FLEX = torch.compile(flex_attention, dynamic=True)
         return _FLEX(q, k, v, block_mask=block_mask)
-    return flex_attention(q, k, v, block_mask=block_mask)
+    Q, KV = block_mask.seq_lengths
+    dense = create_mask(block_mask.mask_mod, None, None, Q, KV, device=q.device)
+    return F.scaled_dot_product_attention(q, k, v, attn_mask=dense)
 
 
 _FLEX = None
