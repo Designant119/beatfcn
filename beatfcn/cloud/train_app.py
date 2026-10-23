@@ -314,6 +314,14 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     from collections import deque
     from beatfcn.model.batch import attach_audio
     from beatfcn.train.pool import SongPool
+    # every worker keeps POOL resident songs per mode: the device pool must hold all of them plus the songs of
+    # prefetched batches, or songs get evicted and reloaded in a loop (review item C; 28 workers simulated 74%
+    # reloads at 160). ~108 MB per song: 200 songs = 22 GB.
+    n_modes = len({r['mode'] for r in train_rows})
+    need = workers * n_modes * POOL + prefetch * 8 + 8
+    if pool_songs < need:
+        log_all({'event': 'pool_capacity', 'requested': pool_songs, 'raised_to': need, 'workers': workers, 'modes': n_modes, 'per_worker': POOL})
+        pool_songs = need
     pool = SongPool(corpus.load_numpy, tuple(taps), device, capacity=pool_songs)
     raw_it, queue = iter(stream), deque()
     worker_audits = {}
