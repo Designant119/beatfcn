@@ -239,6 +239,7 @@ class P1Model(nn.Module):
         self.init = nn.Linear(d + 2 * P + 16 + 4, H)
         self.start = nn.Parameter(torch.randn(H) * 0.02)
         self.gru_cell = nn.GRUCell(H, H)
+        self.register_buffer('mode_types', torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.bool), persistent=False)
         self.cont = nn.Linear(H, 2)
         self.type_h = nn.Linear(H, 4)
         self.type_c = nn.Embedding(4, H)
@@ -683,8 +684,8 @@ class P1Model(nn.Module):
         side, x, dur = flat(ts), flat(tx), flat(bt['note_dur'])
         true_line, true_side, true_x = flat(bt['note_line']), flat(bt['note_side']), flat(bt['note_x'])
         mode = bt['mode'].repeat_interleave(G)
-        table = torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.bool, device=dev)
-        allowed = (bt['allowed_types'] & table[bt['mode']]).repeat_interleave(G, 0)
+        # per-mode legal note types (buffer: a host->device constant copy is not allowed during graph capture)
+        allowed = (bt['allowed_types'] & self.mode_types[bt['mode']]).repeat_interleave(G, 0)
         n_lines = bt['lines'].repeat_interleave(G)
         used = flat(bt['busy']).clone()
         acc = {k: [] for k in ('cont', 'type', 'lane', 'line', 'side')}
