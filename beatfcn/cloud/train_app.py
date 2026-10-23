@@ -887,107 +887,149 @@ def profile(n_batches: int = 12, pool: int = POOL):
 
 @app.function(image=image, volumes={DATA: data}, cpu=16.0, memory=65536, timeout=1800)
 def prep_bench_batches(taps_key: str = 'v4_i8_L9-16-24', taps: tuple = (9, 16, 24), pca: str = 'i8_9-16-24',
-                       n_cores: int = 192, workers: int = 14, out: str = 'bench/batches_v4.pt'):
-    """CPU-only: build the benchmark micro-batches once (8-core and 32-core collations of real training
-    cores) and save them, so GPU benchmarks never hold a GPU while data is prepared. Also reports the
-    data path's sustained rate (cores/s with `workers` processes), which sizes training CPUs."""
+                       n_batches: int = 12, workers: int = 14, out: str = 'bench/meta_static_v4.pt'):
+    """CPU-only: metadata batches (static shape, no audio) from the real worker stream, saved for the GPU
+    bench. Also reports the metadata path's sustained rate (cores/s with `workers` processes)."""
     import torch
+    from beatfcn.model.batch import STATIC
+    from beatfcn.train.data import load_manifest
     tdir = f'{DATA}/taps/{taps_key}'
     have = {s for s in os.listdir(tdir) if os.path.exists(f'{tdir}/{s}/S20.npy')}
-    from beatfcn.train.data import load_manifest
     rows = [r for r in load_manifest(DATA) if r['audio_sha256'] in have and r['split'] == 'train']
     corpus_args = {'root': DATA, 'taps_key': taps_key, 'layers': tuple(taps), 'pca': pca}
-    res = {}
-    for name, mb in (('m8', 8), ('m32', 32)):
-        loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, mb, mb, tuple(taps), max(taps)), batch_size=None,
-                                             num_workers=workers, prefetch_factor=2)
-        it = iter(loader)
-        t0 = time.time()
-        first = next(it)[0]
-        t1 = time.time()
-        rest = [next(it)[0] for _ in range(n_cores // mb - 1)]
-        t2 = time.time()
-        res[name] = [first] + rest
-        res[f'{name}_first_s'] = round(t1 - t0, 1)
-        res[f'{name}_cores_per_s'] = round((n_cores - mb) / max(t2 - t1, 1e-6), 1)
-        del loader, it
+    loader = torch.utils.data.DataLoader(_stream(rows, corpus_args, 3, 32, tuple(taps), max(taps), static=STATIC), batch_size=None,
+                                         num_workers=workers, prefetch_factor=2)
+    it = iter(loader)
+    t0 = time.time()
+    first, skipped = next(it)
+    t1 = time.time()
+    rest = [next(it)[0] for _ in range(n_batches - 1)]
+    t2 = time.time()
+    batches = [first] + rest
     os.makedirs(os.path.dirname(f'{DATA}/{out}'), exist_ok=True)
-    torch.save({'m8': res['m8'], 'm32': res['m32'], 'taps': list(taps), 'taps_key': taps_key}, f'{DATA}/{out}')
+    torch.save({'batches': batches, 'taps': list(taps), 'taps_key': taps_key, 'pca': pca}, f'{DATA}/{out}')
     data.commit()
-    stats = {k: v for k, v in res.items() if not isinstance(v, list)}
+    songs = sorted({k for b in batches for k in b['_audio']['keys']})
+    stats = {'first_s': round(t1 - t0, 1), 'cores_per_s_after_first': round(32 * (n_batches - 1) / max(t2 - t1, 1e-6), 1),
+             'songs': len(songs), 'skipped': skipped, 'bytes_per_batch': sum(v.numel() * v.element_size() for v in first.values() if torch.is_tensor(v))}
     print(json.dumps(stats))
     return stats
 
 
-@app.function(image=image, gpu='L40S', volumes={DATA: data}, cpu=4.0, memory=32768, timeout=1800)
-def bench_train_gpu(batches: str = 'bench/batches_v4.pt', tap_dim: int = 1024, steps: int = 24, variant: dict | None = None,
-                    configs: tuple = ('packed_m8x4', 'packed_m32', 'pad_m32')):
-    """GPU-side cost of one optimiser step (32 cores) on micro-batches prepared by prep_bench_batches
-    (loaded, pinned): the GPU container never builds data."""
+@app.function(image=image, gpu='H100', volumes={DATA: data}, cpu=4.0, memory=32768, timeout=1800)
+def bench_graph(batches: str = 'bench/meta_static_v4.pt', tap_dim: int = 1024, steps: int = 20, variant: dict | None = None,
+                paired: bool = True, pool_songs: int = 160):
+    """GPU: data path (SongPool load + attach) and eager vs CUDA-graph step on static metadata batches;
+    checks graphed parameters against the eager model after the same steps (same init, same batches)."""
+    import copy
     import torch
     from beatfcn.cloud.gpu_util import GpuUtil
+    from beatfcn.model.batch import attach_audio
     from beatfcn.model.p1 import P1Config, P1Model
-    from beatfcn.train.loop import to_device
-    t0 = time.time()
+    from beatfcn.train.data import Corpus
+    from beatfcn.train.graph import GraphedStep
+    from beatfcn.train.loop import to_device, merge, summarize
+    from beatfcn.train.pool import SongPool
     z = torch.load(f'{DATA}/{batches}', weights_only=False)
-    taps = tuple(z['taps'])
-    pin = lambda bt: {k: (v.pin_memory() if torch.is_tensor(v) else v) for k, v in bt.items()}
-    m8, m32 = [pin(b) for b in z['m8']], [pin(b) for b in z['m32']]
-    build_s = time.time() - t0
+    taps, metas = tuple(z['taps']), z['batches']
+    corpus = Corpus(root=DATA, taps_key=z['taps_key'], layers=taps, pca=z['pca'])
     dev = torch.device('cuda')
-    mon, out = GpuUtil(), {'gpu': torch.cuda.get_device_name(), 'load_s': round(build_s, 1), 'rows': []}
-    for cfg in configs:
-        torch.manual_seed(0)
-        mc = P1Config(taps=tuple(taps), top_tap=max(taps), tap_dim=tap_dim, **{**(variant or {}), 'packed': 'packed' in cfg})
-        model = P1Model(mc).to(dev)
-        opt = torch.optim.AdamW(model.parameters(), lr=1e-4, fused=True)
-        fwd = model
-        micro, acc = (m8, 4) if '_m8' in cfg else (m32, 1)
-        sync = 'sync' in cfg
-        k = 0
+    out = {'gpu': torch.cuda.get_device_name(), 'torch': torch.__version__, 'n_batches': len(metas)}
+    # --- data path: pool loads + attach
+    pool = SongPool(corpus.load_numpy, taps, 'cuda', capacity=pool_songs)
+    songs = sorted({k for b in metas for k in b['_audio']['keys']})
+    t = time.time()
+    pool.request(songs)
+    for sha in songs:
+        pool.get(sha)
+    torch.cuda.synchronize()
+    out['pool'] = {'songs': len(songs), 'load_wall_s': round(time.time() - t, 1), 'gb': round(pool.resident_bytes() / 1e9, 2),
+                   'MB_per_s': round(pool.resident_bytes() / 1e6 / max(time.time() - t, 1e-6), 1)}
+    t = time.time()
+    full = []
+    for b in metas:
+        bb = copy.deepcopy(b)
+        attach_audio(bb, pool.get, 'cuda', corpus.scale if corpus.quant else None)
+        full.append(bb)
+    torch.cuda.synchronize()
+    out['attach_ms_per_batch'] = round(1000 * (time.time() - t) / len(metas), 1)
 
-        def step():
-            nonlocal k
-            for _ in range(acc):
-                bt = to_device(micro[k % len(micro)], dev)
-                k += 1
-                bt['w_select'] = 0.2
-                with torch.autocast('cuda', dtype=torch.bfloat16):
-                    loss, _ = fwd(bt)
-                (loss / acc).backward()
-                if sync:
-                    torch.cuda.synchronize()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            opt.step()
-            opt.zero_grad(set_to_none=True)
-        try:
-            tw = time.time()
-            for _ in range(6 if 'packed' in cfg else 3):  # warm-up (FlexAttention compiles for the first shapes)
-                step()
-            torch.cuda.synchronize()
-            warm = time.time() - tw
-            mon.take()
-            torch.cuda.reset_peak_memory_stats()
-            t = time.time()
-            for _ in range(steps):
-                step()
-            torch.cuda.synchronize()
-            dt = (time.time() - t) / steps
-            row = {'config': cfg, 's_per_step': round(dt, 3), 'util': mon.take()['util_mean'], 'warmup_s': round(warm, 1),
-                   'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2)}
-        except Exception as exc:  # report and continue with the other configs
-            row = {'config': cfg, 'error': repr(exc)[:300]}
-        out['rows'].append(row)
-        print(json.dumps(row), flush=True)
-        del model, opt, fwd
-        torch.cuda.empty_cache()
+    class Run:
+        def __init__(self, model, opt):
+            self.model, self.opt = model, opt
+
+    def make(graph, seed=0):
+        runs = []
+        for i in range(2 if paired else 1):
+            torch.manual_seed(seed)
+            mc = P1Config(taps=taps, top_tap=max(taps), tap_dim=tap_dim, **{**(variant or {}), 'selection': bool(i)})
+            m = P1Model(mc).to(dev)
+            lr = torch.tensor(1e-4, device=dev) if graph else 1e-4
+            runs.append(Run(m, torch.optim.AdamW(m.parameters(), lr=lr, fused=True, capturable=graph)))
+        return runs
+    mon = GpuUtil()
+    torch.manual_seed(1)
+    # --- eager reference
+    runs_e = make(False)
+    gs_e = GraphedStep(runs_e, 1.0, dev, capture=False)
+    t = time.time()
+    for i in range(steps):
+        gs_e.fill(full[i % len(full)], 0.2)
+        gs_e.step()
+    torch.cuda.synchronize()
+    out['eager'] = {'s_per_step': round((time.time() - t) / steps, 3), 'util': mon.take()['util_mean']}
+    # --- graphed
+    torch.manual_seed(1)
+    runs_g = make(True)
+    gs_g = GraphedStep(runs_g, 1.0, dev, capture=True)
+    torch.cuda.synchronize()
+    t = time.time()
+    for i in range(gs_g.warmup + 1):  # 3 eager warm-ups + capture (+ replay) on the first batches
+        gs_g.fill(full[i % len(full)], 0.2)
+        gs_g.step()
+    torch.cuda.synchronize()
+    out['graph_setup_s'] = round(time.time() - t, 1)
+    mon.take()
+    torch.cuda.reset_peak_memory_stats()
+    t = time.time()
+    for i in range(gs_g.warmup + 1, gs_g.warmup + 1 + steps):
+        gs_g.fill(full[i % len(full)], 0.2)
+        gs_g.step()
+    torch.cuda.synchronize()
+    out['graph'] = {'s_per_step': round((time.time() - t) / steps, 3), 'util': mon.take()['util_mean'],
+                    'peak_gb': round(torch.cuda.max_memory_allocated() / 1e9, 2)}
+    # --- numerics: fresh models, identical steps eager vs graphed on the same batches
+    torch.manual_seed(2)
+    ra, rb = make(False, seed=5), make(True, seed=5)
+    ga, gb = GraphedStep(ra, 1.0, dev, capture=False), GraphedStep(rb, 1.0, dev, capture=True)
+    n_check = gb.warmup + 4
+    for i in range(n_check):
+        ga.fill(full[i % len(full)], 0.2)
+        ga.step()
+        gb.fill(full[i % len(full)], 0.2)
+        gb.step()
+    torch.cuda.synchronize()
+    diffs = []
+    for a, b in zip(ra, rb):
+        pa = torch.cat([p.detach().float().flatten() for p in a.model.parameters()])
+        pb = torch.cat([p.detach().float().flatten() for p in b.model.parameters()])
+        diffs.append(float((pa - pb).abs().max()))
+    out['numerics'] = {'steps': n_check, 'max_abs_param_diff_per_run': diffs}
     mon.close()
+    print(json.dumps(out))
     return out
 
 
 @app.local_entrypoint()
-def prep_bench(n_cores: int = 128, workers: int = 14):
-    print(prep_bench_batches.remote(n_cores=n_cores, workers=workers))
+def graph_bench(gpus: str = 'H100', steps: int = 20, paired: bool = True):
+    calls = {g: bench_graph.with_options(gpu=g, timeout=1200).spawn(steps=steps, paired=paired) for g in gpus.split(',')}
+    for g, c in calls.items():
+        print(json.dumps(c.get(), indent=1))
+
+
+@app.local_entrypoint()
+def prep_bench(n_batches: int = 12, workers: int = 14):
+    print(prep_bench_batches.remote(n_batches=n_batches, workers=workers))
 
 
 @app.local_entrypoint()
