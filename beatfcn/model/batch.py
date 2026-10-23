@@ -54,10 +54,21 @@ def pool_summary(summary: np.ndarray, max_tokens: int = F.MAX_SUMMARY):
 
 
 BUCKET = {'G': 32, 'K': 64, 'R': 64, 'A': 16, 'S': 64, 'H': 64}  # variable dims rounded up: few distinct batch shapes
+# One fixed shape for CUDA-graph training (collate_meta(static=STATIC)); cores beyond a limit are skipped
+# and counted. Limits cover >99% of cores (measured: G<=121, K<=218, R<=256, A<=26, holds/batch<=360).
+STATIC = {'G': 128, 'K': 256, 'R': 256, 'A': 32, 'S': 256, 'H': 448}
 
 
 def _bucket(n, q):
     return -(-max(n, 1) // q) * q
+
+
+def _size(n, key, static):
+    if static is None:
+        return _bucket(n, BUCKET[key])
+    if n > static[key]:
+        raise F.SkipExample(f'static shape overflow: {key}={n} > {static[key]}')
+    return static[key]
 
 
 @dataclass
@@ -73,18 +84,19 @@ class SongInfo:
 
 
 def collate_meta(examples: list[F.CoreExample], infos: list[SongInfo], taps: tuple[int, ...], top_tap: int,
-                 Dt: int, D_sum: int, quant: bool) -> dict:
+                 Dt: int, D_sum: int, quant: bool, static: dict | None = None) -> dict:
     """Every batch tensor that does not need audio (small: ~50 KB per core), plus `_audio`, the recipe
     attach_audio() uses to fill the audio tensors on any device from resident song caches. Workers run this;
     the audio never crosses process boundaries."""
     B = len(examples)
-    G = _bucket(max([len(e.groups) for e in examples] + [1]), BUCKET['G'])
-    K = _bucket(max([len(e.known) for e in examples] + [1]), BUCKET['K'])
-    R = _bucket(max([len(e.refs) for e in examples] + [1]), BUCKET['R'])
-    A = _bucket(max([len(e.copy_times) for e in examples] + [1]), BUCKET['A'])
-    sk = [-(-i.n_summary // F.MAX_SUMMARY) for i in infos]  # summary pooling factor per core
+    G = _size(max([len(e.groups) for e in examples] + [1]), 'G', static)
+    K = _size(max([len(e.known) for e in examples] + [1]), 'K', static)
+    R = _size(max([len(e.refs) for e in examples] + [1]), 'R', static)
+    A = _size(max([len(e.copy_times) for e in examples] + [1]), 'A', static)
+    max_tokens = F.MAX_SUMMARY if static is None else static['S']  # static: long songs pool coarser (same rule)
+    sk = [-(-i.n_summary // max_tokens) for i in infos]  # summary pooling factor per core
     sn = [-(-i.n_summary // k) for i, k in zip(infos, sk)]  # pooled token count per core
-    S = _bucket(max(sn), BUCKET['S'])
+    S = _size(max(sn), 'S', static)
     out = {
         'mode': torch.tensor([e.mode for e in examples]),
         'audio_valid': torch.zeros(B, F.LOCAL_CELLS, dtype=torch.bool), 'cell_state': torch.zeros(B, F.LOCAL_CELLS, dtype=torch.long),
@@ -183,7 +195,7 @@ def collate_meta(examples: list[F.CoreExample], infos: list[SongInfo], taps: tup
                 hold['ok_hi'].append(onset_abs + hi)
                 hold['onset_us'].append(onset_abs)
                 recipe['holds'].append((b, int(b0), int((b0 + blk) * END_BLOCK_CELLS)))
-    H, Hp = len(hold_index), _bucket(len(hold_index), BUCKET['H'])
+    H, Hp = len(hold_index), _size(len(hold_index), 'H', static)
     pad = Hp - H  # padded holds: index (0,0,0), zero targets/blocks/detail, hold_valid False (masked everywhere)
     out['hold_index'] = torch.tensor(hold_index + [(0, 0, 0)] * pad, dtype=torch.long).reshape(-1, 3)
     out['hold_valid'] = torch.arange(Hp) < H

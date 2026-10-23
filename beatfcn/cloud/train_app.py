@@ -33,7 +33,7 @@ def _audit_corpus(corpus_args, rows):
     return c
 
 
-def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True):
+def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True, static=None):
     """Training micro-batches. meta=True (training): workers build only the metadata (collate_meta,
     ~50 KB per core; songs are never read by workers) and the main process attaches audio from a
     GPU-resident SongPool. meta=False: full CPU collate with whole songs read in the worker."""
@@ -58,7 +58,7 @@ def _stream(rows, corpus_args, seed, micro_batch, taps, top_tap, meta=True):
                     items += smp.draw(min(4, micro_batch - len(items)))
                 try:
                     if meta:
-                        bt = collate_meta([a for a, _ in items], [b for _, b in items], taps, top_tap, Dt, 1024, quant)
+                        bt = collate_meta([a for a, _ in items], [b for _, b in items], taps, top_tap, Dt, 1024, quant, static)
                     else:
                         bt = collate([a for a, _ in items], [b for _, b in items], taps, top_tap)
                 except F.SkipExample as exc:  # never let one core take the worker (and the run) down
@@ -208,7 +208,7 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
           variant: dict | None = None, cf_every: int = 4, cf_pairs: int = 8, cf_start: int = 2000, val_songs_file: str = '',
           pca: str = '', cf_force: bool = False, stop_at: int = 0, whiten: bool = False, also: list | None = None,
           device: str = 'cuda', min_util: float = 0.0, check_after_s: float = 120.0, prep: str = '',
-          pool_songs: int = 160, prefetch: int = 6):
+          pool_songs: int = 160, prefetch: int = 6, graph: bool = False):
     """stop_at: pause at this step (checkpointed) while the LR schedule still spans `steps`; a later call
     with the same run_id resumes from last.pt (S1 compares both variants at stop_at, then extends the winner).
 
@@ -217,7 +217,10 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
     keeps its own optimiser, checkpoints and log under /data/runs/{run_id}.
 
     min_util: cost guard. From check_after_s seconds into training, a log interval whose GPU utilisation is
-    below min_util checkpoints every run (resumable) and stops."""
+    below min_util checkpoints every run (resumable) and stops.
+
+    graph: one fixed batch shape (batch.STATIC) and the whole optimiser step replayed as a CUDA graph
+    (train.graph.GraphedStep); accumulation must be 1."""
     import numpy as np
     import torch
     from beatfcn.model.p1 import P1Config, P1Model
@@ -251,7 +254,11 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                      validate_every=validate_every, val_cores=val_cores)
     corpus = Corpus(**corpus_args)
     # the training stream starts first: its workers warm up while validation cores are built
-    stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed, micro_batch, tuple(taps), max(taps)),
+    from beatfcn.model.batch import STATIC
+    if graph and accumulation != 1:
+        raise ValueError('graph=True needs accumulation=1 (one replay per optimiser step)')
+    stream = torch.utils.data.DataLoader(_stream(train_rows, corpus_args, tc.seed, micro_batch, tuple(taps), max(taps),
+                                                 static=STATIC if graph else None),
                                          batch_size=None, num_workers=workers, prefetch_factor=4, persistent_workers=True,
                                          pin_memory=device == 'cuda')
     from collections import deque
@@ -297,8 +304,9 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
         r.model = P1Model(r.mc).to(dev)
         decay = [p for p in r.model.parameters() if p.ndim >= 2]
         other = [p for p in r.model.parameters() if p.ndim < 2]
+        lr0 = torch.tensor(tc.lr, device=dev) if graph else tc.lr  # capturable AdamW needs a tensor LR
         r.opt = torch.optim.AdamW([{'params': decay, 'weight_decay': tc.weight_decay}, {'params': other, 'weight_decay': 0.0}],
-                                  lr=tc.lr, betas=(0.9, 0.95), fused=True)
+                                  lr=lr0, betas=(0.9, 0.95), fused=cuda, capturable=graph and cuda)
         r.log({'event': 'start', 'model': asdict(r.mc), 'train': asdict(tc), 'params': sum(p.numel() for p in r.model.parameters()),
                'gpu': torch.cuda.get_device_name() if cuda else device})
         if os.path.exists(f'{r.dir}/last.pt'):  # resume after preemption / restart (same run id)
@@ -321,6 +329,8 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
             cf_it = iter(torch.utils.data.DataLoader(_pair_stream(train_rows, corpus_args, tc.seed, cf_pairs, tuple(taps)),
                                                      batch_size=None, num_workers=4, prefetch_factor=2, persistent_workers=True))
     mon = GpuUtil()  # nvidia-smi utilisation per log interval (what the Modal dashboard shows)
+    from beatfcn.train.graph import GraphedStep
+    gs = GraphedStep(runs, tc.clip, dev, capture=cuda) if graph else None
     examples, wait_s, gpu_s, t_loop, aborted = 0, 0.0, 0.0, time.time(), None
     end = min(stop_at, tc.steps) if stop_at else tc.steps
 
@@ -330,38 +340,62 @@ def train(run_id: str, steps: int = 3000, micro_batch: int = 8, accumulation: in
                         'step': step, 'best': r.best}, f'{r.dir}/last.pt.tmp')
             os.replace(f'{r.dir}/last.pt.tmp', f'{r.dir}/last.pt')
         data.commit()
+    def cf_step(step):
+        # counterfactual support-swap loss (eager, variable shapes); its grads accumulate before the step
+        from beatfcn.model import cf as CF
+        cbt = to_device(next(cf_it), dev)
+        for r in cf_runs:
+            with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
+                l_cf, cf_acc = CF.cf_loss(r.model, dict(cbt))
+            (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
+            merge(r.acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
+    cf_runs = [r for r in runs if r.use_cf]
     for step in range(start_step, end):
+        lr = lr_at(step, tc)
         for r in runs:
             for g in r.opt.param_groups:
-                g['lr'] = lr_at(step, tc)
-        for _ in range(tc.accumulation):
+                if torch.is_tensor(g['lr']):
+                    g['lr'].fill_(lr)
+                else:
+                    g['lr'] = lr
+        w_sel = 0.2 * min(1.0, (step + 1) / 1000)
+        cf_due = bool(cf_runs) and step >= cf_start and step % cf_every == 0
+        if gs is not None:  # graphed: fill static inputs, eager CF grads, one replay = fwd + bwd + clip + step
             tw = time.time()
             bt, skipped = next(it)
-            bt = to_device(bt, dev)
+            gs.fill(bt, w_sel)
             tg = time.time()
             wait_s += tg - tw
-            for r in runs:  # same micro-batch for every paired run
-                b = dict(bt)
-                b['w_select'] = 0.2 * min(1.0, (step + 1) / 1000)
-                with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
-                    loss, met = r.model(b)
-                (loss / tc.accumulation).backward()
+            if cf_due:
+                cf_step(step)
+            mets, norms = gs.step()
+            for r, met, gn in zip(runs, mets, norms):
                 merge(r.acc, met)
-            gpu_s += time.time() - tg  # host-side issue time (no per-micro-batch sync: the device runs ahead)
+                r.gn = gn
+            gpu_s += time.time() - tg
             examples += bt['mode'].shape[0]
-        cf_runs = [r for r in runs if r.use_cf]
-        if cf_runs and step >= cf_start and step % cf_every == 0:
-            from beatfcn.model import cf as CF
-            cbt = to_device(next(cf_it), dev)
-            for r in cf_runs:
-                with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
-                    l_cf, cf_acc = CF.cf_loss(r.model, dict(cbt))
-                (0.1 * min(1.0, (step - cf_start + 1) / 1000) * l_cf).backward()
-                merge(r.acc, {'cf': (l_cf.detach(), cbt['audio'].shape[0], cf_acc.detach() * cbt['audio'].shape[0])})
-        for r in runs:
-            r.gn = torch.nn.utils.clip_grad_norm_(r.model.parameters(), tc.clip)
-            r.opt.step()
-            r.opt.zero_grad(set_to_none=True)
+        else:
+            for _ in range(tc.accumulation):
+                tw = time.time()
+                bt, skipped = next(it)
+                bt = to_device(bt, dev)
+                tg = time.time()
+                wait_s += tg - tw
+                for r in runs:  # same micro-batch for every paired run
+                    b = dict(bt)
+                    b['w_select'] = w_sel
+                    with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=cuda):
+                        loss, met = r.model(b)
+                    (loss / tc.accumulation).backward()
+                    merge(r.acc, met)
+                gpu_s += time.time() - tg  # host-side issue time (no per-micro-batch sync: the device runs ahead)
+                examples += bt['mode'].shape[0]
+            if cf_due:
+                cf_step(step)
+            for r in runs:
+                r.gn = torch.nn.utils.clip_grad_norm_(r.model.parameters(), tc.clip)
+                r.opt.step()
+                r.opt.zero_grad(set_to_none=True)
         if (step + 1) % tc.log_every == 0:
             shared = {'step': step + 1, 'lr': lr_at(step, tc), 'examples': examples, 'data_wait_s': round(wait_s, 1),
                       'gpu_s': round(gpu_s, 1), 'elapsed_s': round(time.time() - t0, 1),
