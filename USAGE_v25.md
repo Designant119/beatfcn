@@ -23,16 +23,18 @@ python3 -m venv venv_bt && source venv_bt/bin/activate && pip install torch torc
 # 1) 下载谱面 zip（用户自备语料时跳过，直接把 zip 放进 charts/）
 python download_shard.py --jsonl phira_all_charts.jsonl --outdir charts --manifest manifest.csv --workers 8
 
-# 2) 提特征（--drag：drag onset 计入标签；同刻≥2 自动折叠为双押）
-python extract_full.py charts grid_npz_clean grid 8 "" 32 --drag
+# 2) 提特征到原始目录（--drag：drag onset 计入标签；同刻≥2 自动折叠为双押）
+python extract_full.py charts grid_npz_raw grid 8 "" 32 --drag
 python extract_pitch.py charts pitch_npz_full "" 8
 
 # 3) offset 清洗（必做；不洗的历史实测 F1 只有 0.26，洗完 0.54）
-python bench/offset_clean.py   # 产出 grid_npz_clean（含 .dropped 标记的被隔离谱面）
+#    用法：python bench/offset_clean.py <src_npz_dir> <dst_npz_dir> <report.json>
+python bench/offset_clean.py grid_npz_raw grid_npz_clean offset_report.json
 
 # 4) beat_this 节拍缓存（训练通道 + 推理网格共用；CPU 每首几十秒，一次性）
+#    root 目录下需有 charts/（原始 zip）和 grid_npz_clean/（清洗后的 npz）
 source venv_bt/bin/activate
-python gen/detect_all.py <bench_root> beats_clean
+python gen/detect_all.py . beats_clean
 
 # 5) 训练（4090：几分钟/轮；建议 100+ 轮看曲线平了再停）
 source venv/bin/activate

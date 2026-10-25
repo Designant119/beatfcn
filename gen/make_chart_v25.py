@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gen.layer1 import detect, subdiv, smooth_beats
 from gen.selector import features, score, select
 from gen.make_chart import decode, build_rpe, DIV, LAG_BEAT
-from gen.accent import accent_curve, accent_at
+from gen.accent import accent_curve, accent_at, boosted
 from model_v23 import load_any_model
 import feat_v25
 SR = 22050
@@ -31,6 +31,7 @@ def main():
     ap.add_argument('--nps', type=float, default=4.0, help='目标密度（音符/秒），top-K 精确命中')
     ap.add_argument('--th2', type=float, default=0.55, help='双押阈值（test 实测 0.5→P0.40/R0.41，0.6→P0.46/R0.29，草稿宁多标取偏低）')
     ap.add_argument('--accent-gate', type=int, default=40, help='双押重音门控：重音低于已选候选第 N 百分位的禁止双押（0=关）')
+    ap.add_argument('--lam', type=float, default=0.3, help='选音重音先验强度（只改排序不改时间；实测 F1 0.644→0.657，0=关）')
     ap.add_argument('--name', default=None)
     ap.add_argument('--no-audio-in-zip', action='store_true')
     ap.add_argument('--no-smooth', action='store_true')
@@ -54,11 +55,13 @@ def main():
     gt = subdiv(beats_g, DIV)
     m = (gt >= 0) & (gt < dur); gb, gt = gb[m], gt[m]
     s1, s2 = score(model, feat25, gt, math.log1p(a.nps))
-    sel = select(s1, gt, 0.0, min_gap=min_gap_of(a.nps))
-    sel = np.sort(sel[np.argsort(-s1[sel])][:int(round(a.nps * dur))])  # 密度精确 top-K
+    cur = accent_curve(feat)
+    sb = boosted(s1, cur, gt, downs=(downs - LAG_BEAT) if (a.lam > 0 and len(downs)) else None, lam=a.lam) if a.lam > 0 else s1
+    sel = select(sb, gt, 0.0, min_gap=min_gap_of(a.nps))
+    sel = np.sort(sel[np.argsort(-sb[sel])][:int(round(a.nps * dur))])  # 密度精确 top-K（按重音加权分排序）
     nb = gb[sel]; dbl = s2[sel] >= a.th2
     if a.accent_gate > 0 and len(sel):
-        acc = accent_at(accent_curve(feat), gt[sel])
+        acc = accent_at(cur, gt[sel])
         dbl = dbl & (acc >= np.percentile(acc, a.accent_gate))
     nb = np.where(gt[sel] < beats_g[0], gt[sel] / beats_g[0], nb)  # 首拍前的音按首段 bpm 折算
 
