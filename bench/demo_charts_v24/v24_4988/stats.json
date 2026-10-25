@@ -1,0 +1,22 @@
+{
+ "name": "BeatFCN_v24_冬雨",
+ "dur_s": 133.5,
+ "notes": 934,
+ "selected": 735,
+ "by_type": {
+  "tap": 445,
+  "hold": 64,
+  "flick": 31,
+  "drag": 195
+ },
+ "doubles": 199,
+ "nps_req": 5.03,
+ "run_fill_drags": 63,
+ "nps_out": 5.51,
+ "lam": 0.3,
+ "osu": {
+  "objects": 934,
+  "timing_points": 21
+ },
+ "bpm_median": 174.2
+}

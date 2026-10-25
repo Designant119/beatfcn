@@ -1,0 +1,22 @@
+{
+ "name": "BeatFCN_v24_Crisscross",
+ "dur_s": 130.0,
+ "notes": 880,
+ "selected": 773,
+ "by_type": {
+  "tap": 315,
+  "hold": 20,
+  "flick": 25,
+  "drag": 413
+ },
+ "doubles": 107,
+ "nps_req": 5.94,
+ "run_fill_drags": 1,
+ "nps_out": 5.95,
+ "lam": 0.3,
+ "osu": {
+  "objects": 880,
+  "timing_points": 4
+ },
+ "bpm_median": 128.0
+}

@@ -1,0 +1,15 @@
+{
+ "name": "シャルル_[IN13]",
+ "dur_s": 102.6,
+ "beats": 243,
+ "bpm_median": 142.9,
+ "notes": 359,
+ "taps": 354,
+ "doubles": 5,
+ "nps_req": 3.45,
+ "nps_out": 3.45,
+ "th": 0.75,
+ "f20_vs_chart": 0.653,
+ "f50_vs_chart": 0.669,
+ "chart_notes_cells": 354
+}

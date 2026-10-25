@@ -1,0 +1,10 @@
+# Python依赖
+torch>=2.0,<3.0
+numpy>=1.24,<3.0
+scipy>=1.10,<2.0
+
+# 系统依赖（必须单独安装，pip装不了）：
+# - ffmpeg：音频解码用，提取谱面音频时需要
+#   Ubuntu/Debian: sudo apt install ffmpeg
+#   AutoDL镜像一般已自带，可运行 `ffmpeg -version` 确认
+# - curl：download_shard.py下载谱面用，Linux一般自带
