@@ -1,0 +1,32 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "d06-live-input",
+  "source_sha256": "c648a492ec63d3994b29a8951913ef0870e8047b803d0d674fd04ecdb2e874db",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "gpu": "L40S",
+    "cpu": 12,
+    "memory_gib": 48,
+    "timeout": 240
+  },
+  "live_input_probe": {
+    "output": "/data/evolution/capability-evolution-20261024/d06-live-input/report.json",
+    "checkpoint_path": "/data/runs/evo-r01-supply-trace/last.pt",
+    "policy": {
+      "request_mix": {
+        "from_scratch": 0.4,
+        "middle_holes": 0.3,
+        "continuation": 0.1,
+        "sparse_anchors": 0.1,
+        "reference": 0.1
+      },
+      "control_drop_all_p": 0.5,
+      "paired_references": true,
+      "rollout_fraction": 0.02,
+      "replay_max_uses": 32
+    },
+    "rollout_cache": "/data/evolution/capability-evolution-20261024/r01-comprehensive/own_history.pt"
+  },
+  "acceptance": "Actual workers, pool swapping, same model weights. Split slot wait/allocation/copy; 12/1/12 threads. No optimizer updates."
+}

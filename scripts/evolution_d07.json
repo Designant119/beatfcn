@@ -1,0 +1,34 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "d07-byte-transport",
+  "source_sha256": "373ab8cae9a7fc01d45cd3dd96f99512492c4b9b6061f17f6600924cfaa42bda",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "gpu": "L40S",
+    "cpu": 12,
+    "memory_gib": 48,
+    "timeout": 240
+  },
+  "live_input_probe": {
+    "output": "/data/evolution/capability-evolution-20261024/d07-byte-transport/report.json",
+    "checkpoint_path": "/data/runs/evo-r01-supply-trace/last.pt",
+    "policy": {
+      "request_mix": {
+        "from_scratch": 0.4,
+        "middle_holes": 0.3,
+        "continuation": 0.1,
+        "sparse_anchors": 0.1,
+        "reference": 0.1
+      },
+      "control_drop_all_p": 0.5,
+      "paired_references": true,
+      "rollout_fraction": 0.02,
+      "replay_max_uses": 32
+    },
+    "rollout_cache": "/data/evolution/capability-evolution-20261024/r01-comprehensive/own_history.pt",
+    "compare_copy_methods": true,
+    "phase_batches": 24
+  },
+  "acceptance": "Actual live input: torch/bytes/torch/bytes copy, then paired same shared tensors in alternating order. Preserve byte values and CUDA slot lifetime."
+}

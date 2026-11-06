@@ -1,0 +1,20 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "d05-transport",
+  "source_sha256": "8f46d384831395dce49b6d86494b6e4e31f98cd4609c964ba884e52440562d9a",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "gpu": "L40S",
+    "cpu": 12,
+    "memory_gib": 48,
+    "timeout": 240
+  },
+  "transport_probe": {
+    "output": "/data/evolution/capability-evolution-20261024/d05-transport/report.json",
+    "checkpoint_path": "/data/runs/evo-r01-supply-trace/last.pt",
+    "prep": "7e19ad22afd46946"
+  },
+  "acceptance": "Same real inputs; default/1/default CPU threads; host-copy latency, resident versus staged forward/backward, finite/equal gradients. No parameter updates.",
+  "repair": "Modal does not expose cgroup cpu.max; record unavailable instead of failing optional telemetry."
+}

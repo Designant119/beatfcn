@@ -1,0 +1,342 @@
+"""Corpus access for training/probes: manifest rows, canon charts, song caches (DATA_RULES §6).
+
+Model-view time = native time + offset_decision.shift_ms + the per-(source,codec) constant c
+(DATA_RULES v2: osu c = +14 ms for both mp3 and vorbis, Phira -2..-6 ms; export subtracts c).
+Native charts on the Volume are never modified. Charts whose shifted events leave the audio
+are skipped by the request builder rather than clipped.
+"""
+from __future__ import annotations
+from dataclasses import replace
+from fractions import Fraction
+import json
+import math
+import os
+import numpy as np
+from ..events.canonical import Chart, Event
+from ..model.batch import SongCache
+from ..ingest.phira_policy import screen_metadata
+
+DATA = '/data'
+
+
+DUP_REASONS = {'duplicate_object', 'duplicate_object_in_source'}
+
+
+def dup_only(r) -> bool:
+    """Legacy duplicate-only quarantine; Phira native multiplicity is preserved."""
+    reasons = set(r.get('quarantine_reasons') or [])
+    return r.get('status') == 'parsed' and bool(reasons) and reasons <= DUP_REASONS
+
+
+def load_manifest(root=DATA, split=None, kept_only=True, select=True, dup_collapse=True, require_offset_version=None,
+                  manifest_name='charts.jsonl'):
+    rows = []
+    with open(os.path.join(root, 'manifest', manifest_name)) as f:
+        for line in f:
+            r = json.loads(line)
+            if require_offset_version is not None and r.get('status') == 'parsed':
+                if r.get('offset_decision', {}).get('decision_version', 1) != require_offset_version:
+                    raise ValueError('stale offset decisions: migrate the manifest before starting a new training baseline')
+            if kept_only and not r.get('kept') and not (dup_collapse and dup_only(r)):
+                continue
+            if split and r.get('split') != split:
+                continue
+            if select and not selected_for_training(r):
+                continue
+            rows.append(r)
+    return rows
+
+
+PHIRA_MIN_RATING = 0.75
+PHIRA_MIN_RATING_COUNT = 50
+PHIRA_SELECTION_VERSION = 'phira-rating-075-votes50-native-screen-v3'
+OSU_APPROVED = (1, 2)  # ranked, approved; loved (4) excluded (DATA_RULES §1)
+# Phira difficulty whitelist (DATA_RULES v4, user decision): only the standard EZ/HD/IN/AT tags. SP charts
+# (notes for performance/drawing), 4K/5K/6K mania imitation, ADOFAI and every custom tag are excluded.
+PHIRA_TAGS = frozenset({'EZ', 'HD', 'IN', 'AT'})
+
+
+def phira_tag(r) -> str:
+    import re
+    return re.split(r'[\s.]', (r.get('difficulty_label') or '?').strip().upper())[0]
+
+
+def phira_rating_metadata(row):
+    """Normalize score/count aliases without rounding votes or guessing missing counts."""
+    try:
+        rating = float(row['rating'])
+        if isinstance(row['rating'], bool) or not math.isfinite(rating) or not 0 <= rating <= 1:
+            rating = None
+    except (KeyError, TypeError, ValueError, OverflowError):
+        rating = None
+    counts = []
+    for key in ('rating_count', 'ratingCount'):
+        if key not in row:
+            continue
+        try:
+            value = float(row[key])
+            if isinstance(row[key], bool) or not math.isfinite(value) or value < 0 or not value.is_integer():
+                raise ValueError('Invalid rating count')
+            counts.append(int(value))
+        except (TypeError, ValueError, OverflowError):
+            return rating, None
+    count = counts[0] if counts and len(set(counts)) == 1 else None
+    return rating, count
+
+
+def phira_rating_eligible(row):
+    rating, count = phira_rating_metadata(row)
+    return (rating is not None and rating >= PHIRA_MIN_RATING
+            and count is not None and count >= PHIRA_MIN_RATING_COUNT)
+
+
+def selected_for_training(r) -> bool:
+    """Metadata eligibility; technical, clock, split and quota checks remain separate."""
+    if r.get('source') == 'phira':
+        return (phira_rating_eligible(r)
+                and phira_tag(r) in PHIRA_TAGS
+                and ('reviewed' not in r or bool(r['reviewed']))
+                and screen_metadata(r)['status'] == 'eligible_metadata_only')
+    if r.get('source') == 'osu':
+        return int(r.get('approved') or 0) in OSU_APPROVED
+    return False
+
+
+def model_shift_us(row, apply_codec_constant=False) -> int:
+    d = row.get('offset_decision') or {}
+    ms = int(d.get('shift_ms') or 0) + (int(d.get('c_ms') or 0) if apply_codec_constant else 0)
+    return ms * 1000
+
+
+def check_stacks(events, max_stack=None):
+    """Report native multiplicity. An explicit legacy diagnostic cap is optional.
+
+    Training and admission use no cap: stack depth cannot identify fake notes.
+    """
+    from collections import Counter
+    counts = Counter((e.onset_us, e.end_us, e.type, e.location) for e in events)
+    top = max(counts.values(), default=1)
+    if max_stack is not None and top > max_stack:
+        raise ValueError(f'stack of {top} identical notes exceeds {max_stack}')
+    return top
+
+
+def read_bytes(path, chunk=8 << 20):
+    """Whole file with large unbuffered reads (network volumes: many small reads are the slow part)."""
+    size = os.stat(path).st_size
+    buf = bytearray(size)
+    mv = memoryview(buf)
+    off = 0
+    with open(path, 'rb', buffering=0) as f:
+        while off < size:
+            n = f.readinto(mv[off:off + chunk])
+            if not n:
+                break
+            off += n
+    return bytes(buf[:off])
+
+
+def npy_header(f):
+    """(shape, dtype) of a plain .npy from an open binary file positioned at 0; leaves f at the data start."""
+    version = np.lib.format.read_magic(f)
+    shape, fortran, dtype = np.lib.format._read_array_header(f, version)
+    if fortran or dtype.hasobject:
+        raise ValueError(f'{getattr(f, "name", "?")}: only C-order numeric .npy files are supported here')
+    return shape, dtype
+
+
+def read_npy(path, chunk=8 << 20):
+    """np.load for a plain (non-object, C-order) .npy with large unbuffered reads straight into the array:
+    FUSE volumes serve 8 MB reads ~5x faster than np.load's small reads."""
+    with open(path, 'rb', buffering=0) as f:
+        version = np.lib.format.read_magic(f)
+        shape, fortran, dtype = np.lib.format._read_array_header(f, version)
+        if fortran or dtype.hasobject:
+            f.seek(0)
+            return np.load(f)
+        arr = np.empty(shape, dtype)
+        mv = memoryview(arr.reshape(-1).view(np.uint8))
+        off, total = 0, arr.nbytes
+        while off < total:
+            n = f.readinto(mv[off:off + chunk])
+            if not n:
+                raise EOFError(f'{path}: short read at {off} of {total}')
+            off += n
+    return arr
+
+
+def npy_shape(path):
+    """Shape from a .npy header without mapping or reading the data (network volumes: no mmap, one small read)."""
+    with open(path, 'rb') as f:
+        version = np.lib.format.read_magic(f)
+        shape, _, _ = np.lib.format._read_array_header(f, version)
+    return shape
+
+
+def chart_from_canon(doc: dict, shift_us: int = 0) -> Chart:
+    evs = []
+    for e in doc['events']:
+        e = dict(e)
+        # Canonical playable events must never silently absorb performance notes.
+        # Quarantine the document instead of changing its truth set while loading.
+        for field in ('fake', 'isFake'):
+            if field in e and (type(e[field]) not in (bool, int) or e[field] != 0):
+                raise ValueError(f'non-playable or ambiguous {field} in canon events: {e.get("event_id")}')
+        e.pop('fake', None)
+        e.pop('isFake', None)
+        ev = Event.from_json(e)
+        if shift_us:
+            ev = replace(ev, onset_us=ev.onset_us + shift_us, end_us=ev.end_us + shift_us)
+        evs.append(ev)
+    return Chart(doc['mode'], doc['source_format'], str(doc.get('format_version')), tuple(evs), None,
+                 Fraction(0), {}, {'source_name': doc.get('native_id', 'chart')}, (), (), doc.get('source_sha256', ''))
+
+
+class QuantArray:
+    """int8 PCA taps on a memmap, dequantised per slice (only the rows a core reads are touched)."""
+
+    def __init__(self, arr, scale):
+        self.arr, self.scale = arr, scale  # scale: per-component (raw PCA units) or a scalar (whitened)
+        self.raw = arr  # int8 rows for collate's compact transport (dequantised on the device)
+        self.shape, self.dtype = arr.shape, np.float32
+
+    def __len__(self):
+        return self.shape[0]
+
+    def __getitem__(self, idx):
+        return np.asarray(self.arr[idx], np.float32) * self.scale
+
+
+class Corpus:
+    def __init__(self, root=DATA, taps_key=None, layers=(8, 16, 24), apply_codec_constant=True, pca='', whiten=False):
+        self.root, self.taps_key, self.layers = root, taps_key, tuple(layers)
+        self.scale = {}
+        if pca:  # int8 PCA taps: per-component dequantisation scale
+            z = np.load(os.path.join(root, 'pca', f'{pca}.npz'))
+            self.scale = {l: z[f'scale_{l}'].astype(np.float32) for l in self.layers}
+            if whiten:  # scale = 4 sigma / 127, so q * 4/127 = y / sigma: unit variance per component
+                self.scale = {l: np.float32(4 / 127) for l in self.layers}
+        self.apply_c = apply_codec_constant
+        self._rows = {}
+        self._charts = {}
+        self._salient = {}
+        self._info = {}
+
+    def train_rows(self, rows):
+        out = []
+        for r in rows:
+            self._rows[r['chart_id']] = r
+            out.append({'chart_id': r['chart_id'], 'song': r['audio_sha256'], 'mode': r['mode'],
+                        'duration_us': int(round(r['audio_sec'] * 1e6))})
+        return out
+
+    def chart(self, chart_id) -> Chart:
+        hit = self._charts.get(chart_id)
+        if hit is not None:
+            return hit
+        if len(self._charts) > 512:
+            self._charts.clear()
+        self._charts[chart_id] = c = self._load_chart(chart_id)
+        return c
+
+    def _load_chart(self, chart_id) -> Chart:
+        r = self._rows[chart_id]
+        doc = json.loads(read_bytes(os.path.join(self.root, 'canon', r['source'], f"{r['native_id']}.json")))
+        chart = chart_from_canon(doc, model_shift_us(r, self.apply_c))
+        if dup_only(r):
+            check_stacks(chart.events)
+        return chart
+
+    def usable(self, row) -> bool:
+        """Validate legacy duplicate-only chart loading without a stack-depth filter."""
+        if not dup_only(row):
+            return True
+        self._rows[row['chart_id']] = row
+        try:
+            self.chart(row['chart_id'])
+            return True
+        except ValueError:
+            return False
+
+    def salient_us(self, sha, mel=None):
+        """Spectral-flux peaks (same envelope as the offset diagnostic) as candidate unselected times."""
+        hit = self._salient.get(sha)
+        if hit is None:
+            from ..ingest.offset import flux_envelope, PEAK_MIN
+            mel = read_npy(os.path.join(self.root, 'mel10', f'{sha}.npy')) if mel is None else mel
+            env = flux_envelope(np.asarray(mel, np.float32))
+            pk = np.where((env[1:-1] > env[:-2]) & (env[1:-1] >= env[2:]) & (env[1:-1] > PEAK_MIN))[0] + 1
+            if len(self._salient) > 256:
+                self._salient.clear()
+            hit = self._salient[sha] = (pk * 10_000).tolist()
+        return hit
+
+    def mel(self, sha):
+        return np.load(os.path.join(self.root, 'mel10', f'{sha}.npy'), mmap_mode='r')
+
+    def song_info(self, sha):
+        """Shape-only description for batch.collate_meta (workers never read the tap cache): cell and
+        summary counts follow the encoder's window plan from the mel frame count."""
+        from ..audio.memory import plan, SUMMARY_CELLS
+        from ..model.batch import SongInfo
+        info = self._info.get(sha)
+        if info is None:  # one header read per song per worker (a resident song serves ~100 cores)
+            frames = npy_shape(os.path.join(self.root, 'mel10', f'{sha}.npy'))[0]
+            cells = plan(frames).cells
+            if len(self._info) > 4096:
+                self._info.clear()
+            info = self._info[sha] = SongInfo(sha, cells, -(-cells // SUMMARY_CELLS))
+        return info
+
+    @property
+    def tap_dim(self):
+        """Tap width from one cached song's header (never a directory listing: 8.7k entries on a network
+        volume take tens of seconds, and every worker used to do it)."""
+        if not hasattr(self, '_tap_dim'):
+            sha = next(iter(self._rows.values()))['audio_sha256'] if self._rows else next(iter(os.listdir(os.path.join(self.root, 'taps', self.taps_key))))
+            self._tap_dim = npy_shape(os.path.join(self.root, 'taps', self.taps_key, sha, f'L{self.layers[0]}.npy'))[-1]
+        return self._tap_dim
+
+    @property
+    def quant(self):
+        return bool(self.scale)
+
+    def song_paths(self, sha, mel=True):
+        """Files of a song in the order load_numpy returns them: taps per layer, S20 summary, optionally mel10."""
+        base = os.path.join(self.root, 'taps', self.taps_key, sha)
+        paths = [os.path.join(base, f'L{l}.npy') for l in self.layers] + [os.path.join(base, 'S20.npy')]
+        if mel:
+            paths.append(os.path.join(self.root, 'mel10', f'{sha}.npy'))
+        return paths
+
+    def load_numpy(self, sha, mel=True):
+        """Whole-song arrays for a SongPool: raw int8 taps (dequantised on the device), summary, mel (or None).
+        Read with read_npy (8 MB unbuffered chunks): np.load on the network volume measured 12-22 MB/s per
+        container against ~100 MB/s for chunked raw reads (reports/volume_reads_2026-10-24.json)."""
+        paths = self.song_paths(sha, mel)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(len(paths)) as ex:
+            arrs = list(ex.map(read_npy, paths))
+        T = len(self.layers)
+        return dict(zip(self.layers, arrs[:T])), arrs[T], arrs[T + 1] if mel else None
+
+    def song(self, sha, in_memory=False) -> SongCache:
+        """Memmapped by default: a core reads a few contiguous slices (16 s local audio, one reference
+        range, end blocks), far less than whole-song reads. in_memory=True loads whole files with one
+        sequential read each (int8 taps stay int8 in memory and are dequantised per slice)."""
+        base = os.path.join(self.root, 'taps', self.taps_key, sha)
+        mm = None if in_memory else 'r'
+        paths = [os.path.join(base, f'L{l}.npy') for l in self.layers] + [os.path.join(base, 'S20.npy'),
+                                                                          os.path.join(self.root, 'mel10', f'{sha}.npy')]
+        if in_memory:  # one stream per file: a single network-volume read stream is ~25 MB/s
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(len(paths)) as ex:
+                arrs = list(ex.map(np.load, paths))
+        else:
+            arrs = [np.load(q, mmap_mode=mm) for q in paths]
+        taps = dict(zip(self.layers, arrs))
+        for l, sc in self.scale.items():
+            if taps[l].dtype == np.int8:
+                taps[l] = QuantArray(taps[l], sc)
+        summary, mel = arrs[-2], arrs[-1]
+        return SongCache(taps, summary, mel, int(mel.shape[0] * 10_000))
