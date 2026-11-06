@@ -1,0 +1,33 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "p01-metadata-tape",
+  "source_sha256": "526572f5dfa0467d6a5a108c4ff33adf33b0f6ba276f2baa5854b022259ef9f7",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "cpu": 8,
+    "memory_gib": 32,
+    "timeout": 300
+  },
+  "metadata_prepare": {
+    "output": "/data/evolution/capability-evolution-20261024/p01-metadata-tape/tape",
+    "checkpoint_path": "/data/runs/evo-r01-supply-trace/last.pt",
+    "policy": {
+      "request_mix": {
+        "from_scratch": 0.4,
+        "middle_holes": 0.3,
+        "continuation": 0.1,
+        "sparse_anchors": 0.1,
+        "reference": 0.1
+      },
+      "control_drop_all_p": 0.5,
+      "paired_references": true,
+      "rollout_fraction": 0.02,
+      "replay_max_uses": 32
+    },
+    "rollout_cache": "/data/evolution/capability-evolution-20261024/r01-comprehensive/own_history.pt",
+    "n_batches": 1500,
+    "seed": 52926897,
+    "micro_batch": 8
+  }
+}

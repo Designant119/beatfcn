@@ -1,0 +1,46 @@
+{
+ "base_plan": "/data/round5-level/plan.json",
+ "base_plan_sha256": "a38198c389193f26cccb445365ef3ca28b26b6a0fcc3fa34138436aaccc50b7f",
+ "learning_rate": 3e-05,
+ "schedule": {
+  "horizon_updates": 2000,
+  "warmup_updates": 50,
+  "minimum_lr": 5e-06
+ },
+ "ema": {
+  "decay": 0.999
+ },
+ "light_checkpoint_every": 500,
+ "light_checkpoint_keep": 1,
+ "seed": 20261110,
+ "loader_workers": 8,
+ "loader_prefetch": 2,
+ "exposure": {
+  "path": "/data/evolve/exposure-20261110-2000u.json",
+  "seed": 20261110,
+  "subdivision_tags": "/data/evolve/subdivision-tags.json",
+  "unconditional_native": true
+ },
+ "surgery": null,
+ "kd": null,
+ "layerdrop": 0.0,
+ "field_weights": {},
+ "kind_class_weights": {},
+ "freeze_encoders": false,
+ "id": "R1-peer",
+ "init": "/data/beatfcn-r5-l322m.pt",
+ "out_dir": "/data/evolve/R1-peer",
+ "rl": {
+  "samples": 8,
+  "windows": 8,
+  "weight": 1.0,
+  "max_replay_rows": 32,
+  "replay_chunk": 16,
+  "min_support": 2,
+  "reward_majority": 0.75,
+  "reward_weight": 0.2,
+  "reuse": 4,
+  "anchor_weight": 0.5,
+  "rules": false
+ }
+}

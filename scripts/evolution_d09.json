@@ -1,0 +1,33 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "d09-compressed-tape",
+  "source_sha256": "df5e537c45b8d1ee43104d661d90ec5e024b27ab1654043d28829886ef10a155",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "gpu": "L40S",
+    "cpu": 12,
+    "memory_gib": 48,
+    "timeout": 180
+  },
+  "live_input_probe": {
+    "output": "/data/evolution/capability-evolution-20261024/d09-compressed-tape/report.json",
+    "checkpoint_path": "/data/runs/evo-r01-supply-trace/last.pt",
+    "policy": {
+      "request_mix": {
+        "from_scratch": 0.4,
+        "middle_holes": 0.3,
+        "continuation": 0.1,
+        "sparse_anchors": 0.1,
+        "reference": 0.1
+      },
+      "control_drop_all_p": 0.5,
+      "paired_references": true,
+      "rollout_fraction": 0.02,
+      "replay_max_uses": 32
+    },
+    "rollout_cache": "/data/evolution/capability-evolution-20261024/r01-comprehensive/own_history.pt",
+    "metadata_tape": "/data/evolution/capability-evolution-20261024/p02-compress-tape/tape"
+  },
+  "acceptance": "Private prebuilt metadata plus the same song pool and tensor copy. Three consecutive 32-microbatch windows, no optimizer updates."
+}

@@ -1,0 +1,194 @@
+"""Posthoc distribution arithmetic only; no new decode or neural prediction."""
+from collections import defaultdict
+import json
+import math
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from beatfcn.model.typed_inventory import masked_scores, count_totals
+from beatfcn.model.shared_total_inventory import count_log_marginals, count_modes, count_nll, total_log_probs, composition_mode
+from beatfcn.model.evaluation import hold_matches
+from types import SimpleNamespace
+from beatfcn.train.exact_cell_support import ExactCellSupport, ExactEndpointTree
+from beatfcn.train.native_diagnostic_priors import duration_probability
+from scripts.run_local_portfolio_scale import sha, write
+
+
+ROOT=Path(__file__).resolve().parents[1];ART=ROOT/'artifacts/c16-shared-total-inventory-v1'
+DEST=ROOT/'reports/local-integration-v1/c16-shared-total-inventory-probability-audit.json'
+KINDS=('tap','hold','flick','drag')
+
+
+def mean(values):return float(np.mean(values)) if len(values) else None
+
+
+
+def conditional_diagnostics(scores,total_scores,allowed,truth,plan,record):
+    total_truth=truth.sum(-1);positive=total_truth>0;zero=~positive
+    q=total_log_probs(total_scores,allowed)[0].exp().numpy()
+    presence=1-q[:,0]-q[:,-1]
+    expected_total=(q[:,:65]*np.arange(65)).sum(-1)
+    prior=torch.tensor(plan['prior_potentials'],dtype=torch.float64)[None,None].expand_as(scores)
+    pmasked=masked_scores(prior,allowed);pz=count_totals(pmasked)[0].numpy()
+    z=count_totals(masked_scores(scores,allowed))[0].numpy()
+    array=masked_scores(scores,allowed)[0].numpy();pa=pmasked[0].numpy()
+    vector=np.asarray(record['prediction']['count_decision']);oracle=np.zeros_like(truth);oracle_prior=np.zeros_like(truth)
+    model_nll=prior_nll=0.
+    for c in np.flatnonzero(positive):
+        n=int(total_truth[c]);oracle[c]=composition_mode(array[c],n);oracle_prior[c]=composition_mode(pa[c],n)
+        model_nll+=z[c,n]-sum(float(array[c,k,int(truth[c,k])]) for k in range(4))
+        prior_nll+=pz[c,n]-sum(float(pa[c,k,int(truth[c,k])]) for k in range(4))
+    return dict(total_presence_sum_positive=float(presence[positive].sum()),
+        total_presence_sum_zero=float(presence[zero].sum()),
+        total_presence_positive_ge_half=int((presence[positive]>=.5).sum()),
+        total_presence_zero_ge_half=int((presence[zero]>=.5).sum()),
+        independent_total_expected_events=float(expected_total.sum()),
+        conditional_mark_nll_positive_sum=float(model_nll),conditional_mark_prior_nll_positive_sum=float(prior_nll),
+        oracle_total_typed_slot_arithmetic=int(np.minimum(oracle,truth).sum()),
+        oracle_total_prior_typed_slot_arithmetic=int(np.minimum(oracle_prior,truth).sum()),
+        oracle_total_exact_vectors=int((oracle[positive]==truth[positive]).all(-1).sum()),
+        deployed_exact_positive_vectors=int((vector[positive]==truth[positive]).all(-1).sum()),
+        total_mode_positive_cells=int((vector.sum(-1)>0).sum()),
+        total_mode_true_positive_cells=int(((vector.sum(-1)>0)&positive).sum()),
+        total_mode_false_positive_cells=int(((vector.sum(-1)>0)&zero).sum()))
+
+
+def free_hold_diagnostics(rows):
+    result={};durations=[(e['end_us']-e['onset_us'])/1000 for r in rows for e in r['prediction']['events'] if e['type']=='hold']
+    for tolerance in (10000,50000):
+        errors=[];joint=0
+        for r in rows:
+            pred=[SimpleNamespace(**e,is_hold=e['type']=='hold') for e in r['prediction']['events']]
+            target=[SimpleNamespace(**e,is_hold=e['type']=='hold') for e in r['target']]
+            h=hold_matches(pred,target,tolerance);j=hold_matches(pred,target,tolerance,tolerance)
+            assert h['tp']==r['scores'][f'hold_head_{tolerance//1000}ms']['tp']
+            assert j['tp']==r['scores'][f'hold_joint_{tolerance//1000}ms']['tp']
+            errors.extend(e/1000 for e in h['tail_errors_us']);joint+=j['tp']
+        result[str(tolerance//1000)]=dict(head_matched=len(errors),joint_matched=joint,
+            tail_mae_ms=mean(errors),tail_median_ms=float(np.median(errors)) if errors else None,
+            tail_errors_ms=errors)
+    result['duration_ms']=dict(predictions=len(durations),median=float(np.median(durations)) if durations else None,
+        min=min(durations) if durations else None,max=max(durations) if durations else None,
+        at_most_10ms=sum(v<=10 for v in durations))
+    return result
+
+
+def query_coverage_audit(tasks):
+    out={}
+    for task,rows in tasks.items():
+        cases={}
+        for phase in ('free','teacher'):
+            values=defaultdict(lambda:dict(queries=0,in_range=0,requests=0))
+            for row in rows:
+                for key,v in row.get('query_coverage_'+phase,{}).items():
+                    values[key]['queries']+=v['queries'];values[key]['in_range']+=v['in_range'];values[key]['requests']+=1
+            cases[phase]={k:{**v,'fraction':v['in_range']/v['queries']} for k,v in values.items()}
+        cases['full_source_min']={name:min(r['control'].get('coverage',{}).get(name,1.) for r in rows) for name in ('local','mel','song')}
+        cases['core_min']={name:min(r['control']['core_coverage'][name]['fraction'] for r in rows) for name in ('local','mel','song')}
+        out[task]=cases
+    return dict(cases=out,scope='Actualallcandidatequeryrangeonly;headincludesmaskedcandidates;endpointtreecoarsequeriesinclude far-song nodes by design;not purity of semantic intervention')
+
+
+def main():
+    if DEST.exists():raise FileExistsError('Preserve posthoc audit')
+    started=__import__('time').monotonic()
+    torch.set_num_threads(4)
+    torch.set_grad_enabled(False)
+    plan=json.loads((ROOT/'bench/rhythm-v2/c16-shared-total-inventory-v1.json').read_text())
+    prior=json.loads((ROOT/'artifacts/c14-training-prior-audit-v1a/prior.json').read_text())
+    result=dict(scope='Frozen probability/trace arithmetic;no model forward,new events,sampling,training or chosen replacement decoder',
+        neural_forwards=0,new_free_outcomes=0,optimizer_updates=0,identity={},arms={},probability_controls={})
+    for arm in ('A','C'):
+        rows=json.loads((ART/f'{arm}-draft.json').read_text());totals=defaultdict(float);type_bins={k:defaultdict(list) for k in KINDS};per_component=defaultdict(list)
+        head=tail=uniform_head=uniform_tail=duration=0.;heads=holds=empty_windows=0;count_values=[];old_modes_exact=0
+        for r in rows:
+            path=ROOT/r['probability_path']
+            if sha(path)!=r['probability_sha256']:raise ValueError('Saved probabilities changed')
+            result['identity'][r['probability_path']]=r['probability_sha256']
+            with np.load(path,allow_pickle=False) as pack:
+                scores=torch.tensor(pack['scores'][None],dtype=torch.float64);overflow=torch.tensor(pack['total_scores'][None],dtype=torch.float64)
+                allowed=torch.tensor(pack['allowed'][None],dtype=torch.bool);truth=pack['target'].copy()
+            masked=masked_scores(scores,allowed);total=count_totals(masked)
+            editable=allowed.any(-1);q=total_log_probs(overflow,allowed)
+            distribution=q[0,:,:65].exp().numpy()
+            marginal=count_log_marginals(scores,overflow,allowed).exp()[0].numpy()
+            number=np.arange(65);expectation=(marginal[...,:65]*number).sum(-1);pzero=distribution[:,0]
+            modes=np.array(r['prediction']['count_decision'],np.int64)
+            rebuilt,failures=count_modes(scores,overflow,allowed)
+            if failures or not np.array_equal(rebuilt,modes):raise ValueError('Float64 probability mode disagrees with deployed mode')
+            old_modes_exact+=1
+            if not np.array_equal(q[0].argmax(-1).numpy(),modes.sum(-1)):raise ValueError('Total-mode policy mismatch')
+            joint=count_nll(scores,overflow,allowed,torch.tensor(truth[None]))[0].numpy()
+            if np.max(np.abs(joint-np.asarray(r['joint_count_nll'])))>1e-4:raise ValueError('Stored joint NLL mismatch')
+            positive=truth.sum(-1)>0;zero=~positive;allzero=modes.sum(-1)==0;cmode=distribution.argmax(-1)
+            totals['expected_events']+=expectation.sum();totals['expected_at_positive_onset_cells']+=expectation[positive].sum();totals['expected_at_zero_onset_cells']+=expectation[zero].sum()
+            totals['expected_at_positive_type_cells']+=expectation[truth>0].sum();totals['expected_at_zero_type_cells']+=expectation[truth==0].sum()
+            totals['overflow_probability_sum']+=q[0,:,-1].exp().sum().item()
+            totals['positive_onset_cells']+=positive.sum();totals['zero_onset_cells']+=zero.sum();totals['empty_vector_cells']+=allzero.sum()
+            totals['true_events_under_empty_vector']+=truth[allzero].sum()
+            totals['true_events_under_empty_vector_Ptotal0_ge_half']+=truth[allzero&(pzero>=.5)].sum()
+            totals['true_events_under_empty_vector_Ptotal0_lt_half']+=truth[allzero&(pzero<.5)].sum()
+            totals['cells_empty_vector_but_total_mode_positive']+=int((allzero&(cmode>0)).sum())
+            totals['true_events_empty_vector_but_total_mode_positive']+=truth[allzero&(cmode>0)].sum()
+            totals['deployed_total_mode_event_sum']+=cmode.sum()
+            oracle=conditional_diagnostics(scores,overflow,allowed,truth,plan,r)
+            for name,value in oracle.items():totals[name]+=value
+            empty_windows+=not len(r['prediction']['events']);count_values.append(dict(index=r['index'],component=r['component'],pred=int(modes.sum()),true=int(truth.sum()),expected=float(expectation.sum()),p0_true_cell_median=float(np.median(pzero[positive])) if positive.any() else None))
+            for k,kind in enumerate(KINDS):
+                pos=truth[:,k]>0
+                pp=1-marginal[:,k,0]-marginal[:,k,65]
+                type_bins[kind]['positive_presence_probability'].extend(pp[pos].tolist())
+                type_bins[kind]['positive_true_count_probability'].extend(marginal[np.flatnonzero(pos),k,truth[pos,k]].tolist())
+                type_bins[kind]['zero_presence_probability'].extend(pp[(~pos)&allowed[0,:,k].numpy()].tolist())
+                type_bins[kind]['expected_at_positive_type'].append(float(expectation[pos,k].sum()))
+                type_bins[kind]['expected_at_zero_type'].append(float(expectation[~pos,k].sum()))
+            for name in ('joint_count_nll','prior_joint_count_nll'):
+                per_component[r['component']].append((name,mean(r[name])))
+            request=type('Request',(),r['request'])()
+            values,valid=ExactCellSupport().addresses(request)
+            by=defaultdict(list)
+            for event in r['target']:by[((event['onset_us']-request.start_us)//40000,event['type'])].append(event)
+            for (cell,kind),events in by.items():
+                previous=None
+                for e in sorted(events,key=lambda v:(v['onset_us'],v['end_us'])):
+                    mask=valid[cell].copy()
+                    if previous:mask&=values[cell]>=previous['onset_us']
+                    if kind=='hold':mask&=(values[cell]//1000+1)*1000<=request.duration_us
+                    uniform_head+=math.log(int(mask.sum()));heads+=1
+                    if kind=='hold':
+                        minimum=previous['end_us'] if previous and previous['onset_us']==e['onset_us'] else None
+                        tree=ExactEndpointTree(request,e['onset_us'],minimum);b,c,leaf=tree.path(e['end_us'])
+                        uniform_tail+=math.log(len(tree.blocks()))+math.log(len(tree.cells(b)))+math.log(len(tree.leaves(b,c)))
+                        duration-=math.log(duration_probability(prior,e['onset_us'],e['end_us'],request.duration_us,request.copy_times,minimum));holds+=1
+                    previous=e
+            head+=r['teacher_head_nll'];tail+=r['teacher_tail_nll']
+        types={}
+        for k,bins in type_bins.items():
+            types[k]=dict(positive_cells=len(bins['positive_presence_probability']),zero_cells=len(bins['zero_presence_probability']),
+                positive_presence_mean=mean(bins['positive_presence_probability']),positive_presence_median=float(np.median(bins['positive_presence_probability'])),
+                positive_presence_ge_half=sum(p>=.5 for p in bins['positive_presence_probability']),
+                positive_true_count_probability_mean=mean(bins['positive_true_count_probability']),zero_presence_mean=mean(bins['zero_presence_probability']),
+                expected_at_positive_type=sum(bins['expected_at_positive_type']),expected_at_zero_type=sum(bins['expected_at_zero_type']))
+        result['arms'][arm]=dict(totals=dict(totals),types=types,empty_draft_windows=empty_windows,requests=count_values,
+            deployed_mode_reproduced=old_modes_exact,capacity_constraint_nonbinding_in_mode=True,
+            free_holds=free_hold_diagnostics(rows),
+            teacher=dict(events=heads,holds=holds,head_nll_per_event=head/heads,uniform_head_nll_per_event=uniform_head/heads,
+                tail_nll_per_hold=tail/holds,uniform_tree_tail_nll_per_hold=uniform_tail/holds,duration_prior_nll_per_hold=duration/holds))
+        tasks={task:json.loads((ART/f'{arm}-{task}.json').read_text()) for task in ('draft','audio_shift','audio_foreign','audio_zero')}
+        def groups_of(task):
+            groups=defaultdict(list)
+            for r in tasks[task]:groups[r['component']].append(mean(r['joint_count_nll']))
+            return {c:mean(v) for c,v in groups.items()}
+        result.setdefault('query_coverage',{})[arm]=query_coverage_audit(tasks)
+        base=groups_of('draft');result['probability_controls'][arm]={}
+        for task in tasks:
+            values=groups_of(task);delta={c:values[c]-base[c] for c in base}
+            result['probability_controls'][arm][task]=dict(joint_nll_component_macro=mean(list(values.values())),nll_increase_from_real=mean(list(delta.values())),components_worse_than_real=sum(v>0 for v in delta.values()),per_component_delta=delta)
+    result['elapsed_wall_s']=__import__('time').monotonic()-started
+    write(DEST,result)
+    print(json.dumps(dict(status='completed',A=result['arms']['A']['totals'],C=result['arms']['C']['totals'],new_model_calls=0),ensure_ascii=False))
+
+
+if __name__=='__main__':main()

@@ -1,0 +1,78 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "r01-repair1",
+  "source_sha256": "b09efe83f1c4858a0d41ba42a9a2320e69be3bfaeba8140e5a2d6116f7297251",
+  "approved_total_usd": 10,
+  "review_every_effective_updates": 1000,
+  "interpretation": "Whole-method intervention; a gain is not attributed to an individual change.",
+  "roadmap": {
+    "curriculum": "active; review accepted per-kind/mode note and hold exposure",
+    "time_supervision": "sigma 1.5ms conditional Gaussian, hard accuracy retained, gradient probe before updates",
+    "conditioning": "same-audio supervised reference pairs plus 50% full control dropout; audio/reference swaps at review",
+    "own_history": "2% capped replay from real one-core rollouts; unchanged future; conflicts counted",
+    "research": "selection plus counterfactual isolated in a later matched comparison"
+  },
+  "resources": {
+    "gpu": "L40S",
+    "cpu": 6,
+    "memory_gib": 48,
+    "timeout": 1800
+  },
+  "training": {
+    "run_id": "evo-r01-repair1",
+    "steps": 8000,
+    "stop_at": 4500,
+    "round_updates": 1000,
+    "initialize_from": "/data/runs/s1-v21/best.pt",
+    "source_sha256": "b09efe83f1c4858a0d41ba42a9a2320e69be3bfaeba8140e5a2d6116f7297251",
+    "micro_batch": 8,
+    "accumulation": 4,
+    "workers": 4,
+    "val_cores": 40,
+    "val_songs": 8,
+    "lr": 0.0002,
+    "warmup": 500,
+    "validate_every": 250,
+    "taps_key": "v4_i8_L9-16-24",
+    "taps": [
+      9,
+      16,
+      24
+    ],
+    "pca": "i8_9-16-24",
+    "tap_dim": 1024,
+    "pool_songs": 32,
+    "pool_per_worker": 1,
+    "prefetch": 8,
+    "loaders": 4,
+    "graph": false,
+    "min_util": 70.0,
+    "check_after_s": 480.0,
+    "max_data_wait": 0.8,
+    "check_data_after_s": 480.0,
+    "max_wall_s": 1660.0,
+    "manifest_name": "charts.offset-v2-3d99ff6bd5e7.jsonl",
+    "variant": {
+      "selection": false,
+      "compact_inner": true,
+      "lane_history_groups": 8,
+      "offset_sigma_ms": 1.5
+    },
+    "training_policy": {
+      "request_mix": {
+        "from_scratch": 0.4,
+        "middle_holes": 0.3,
+        "continuation": 0.1,
+        "sparse_anchors": 0.1,
+        "reference": 0.1
+      },
+      "control_drop_all_p": 0.5,
+      "paired_references": true,
+      "rollout_fraction": 0.02,
+      "replay_max_uses": 32
+    },
+    "anomaly_steps": 20,
+    "prep": "7e19ad22afd46946",
+    "rollout_cache": "/data/evolution/capability-evolution-20261024/r01-comprehensive/own_history.pt"
+  }
+}

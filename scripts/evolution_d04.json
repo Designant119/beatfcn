@@ -1,0 +1,19 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "d04-transport",
+  "source_sha256": "365cfa8b9228dba031fcbc34e89a8cfa1d9495c3c4794465ceac8bd8f18b300e",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "gpu": "L40S",
+    "cpu": 12,
+    "memory_gib": 48,
+    "timeout": 240
+  },
+  "transport_probe": {
+    "output": "/data/evolution/capability-evolution-20261024/d04-transport/report.json",
+    "checkpoint_path": "/data/runs/evo-r01-supply-trace/last.pt",
+    "prep": "7e19ad22afd46946"
+  },
+  "acceptance": "Same real inputs; default/1/default CPU threads; host-copy latency, resident versus staged forward/backward, finite/equal gradients. No parameter updates."
+}

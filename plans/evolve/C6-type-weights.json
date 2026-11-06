@@ -1,0 +1,41 @@
+{
+ "base_plan": "/data/round5-level/plan.json",
+ "base_plan_sha256": "a38198c389193f26cccb445365ef3ca28b26b6a0fcc3fa34138436aaccc50b7f",
+ "learning_rate": 3e-05,
+ "schedule": {
+  "horizon_updates": 2400,
+  "warmup_updates": 100,
+  "minimum_lr": 5e-06
+ },
+ "ema": {
+  "decay": 0.99
+ },
+ "light_checkpoint_every": 300,
+ "light_checkpoint_keep": 2,
+ "seed": 20261108,
+ "loader_workers": 8,
+ "loader_prefetch": 2,
+ "exposure": {
+  "path": "/data/evolve/exposure-20261108-2400u.json",
+  "seed": 20261108,
+  "subdivision_tags": "/data/evolve/subdivision-tags.json",
+  "unconditional_native": true
+ },
+ "surgery": null,
+ "kd": null,
+ "layerdrop": 0.0,
+ "field_weights": {},
+ "kind_class_weights": {
+  "tap": 0.68,
+  "hold": 1.33,
+  "flick": 1.87,
+  "drag": 1.74
+ },
+ "freeze_encoders": false,
+ "note_lr": "Peak 3e-5, warmup 100, floor 5e-6 as r4/r5. Cosine spans the fixed 2400-update horizon, so rungs 300/900/2400 are prefixes of one trajectory. A resume without Adam state re-warms over 100 updates.",
+ "note_ema": "Decay .99 instead of r5's .999: at .999 a 300-update EMA is close to a flat mean of the whole rung, including the first post-surgery updates.",
+ "note_weights": "Inverse-sqrt of the loss-weighted train mix (reports/evolve-20261104/type-mix.json), mean 1 over kind tokens. See TYPE_COLLAPSE.md. Read at kind T .3 and 1.0.",
+ "id": "C6-type-weights",
+ "init": "/data/beatfcn-r5-l322m.pt",
+ "out_dir": "/data/evolve/C6-type-weights"
+}

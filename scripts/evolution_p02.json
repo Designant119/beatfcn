@@ -1,0 +1,16 @@
+{
+  "campaign": "capability-evolution-20261024",
+  "round": "p02-compress-tape",
+  "source_sha256": "df5e537c45b8d1ee43104d661d90ec5e024b27ab1654043d28829886ef10a155",
+  "approved_total_usd": 10,
+  "training": {},
+  "resources": {
+    "cpu": 4,
+    "memory_gib": 32,
+    "timeout": 300
+  },
+  "metadata_compress": {
+    "source": "/data/evolution/capability-evolution-20261024/p01-metadata-tape/tape",
+    "output": "/data/evolution/capability-evolution-20261024/p02-compress-tape/tape"
+  }
+}
