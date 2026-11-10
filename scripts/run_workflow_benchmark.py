@@ -868,10 +868,6 @@ def decode_options(args):
         options['fast'] = False
     if getattr(args, 'no_cuda_graph', False):
         options['cuda_graph'] = False
-    constraints = {k: v for k, v in (('max_chord', getattr(args, 'max_chord', None)),
-                                     ('min_same_lane_ms', getattr(args, 'min_jack_ms', None))) if v is not None}
-    if constraints:
-        options['pattern_constraints'] = constraints
     if getattr(args, 'autocast', None):
         options['autocast'] = args.autocast
     if getattr(args, 'compile_decode', False):
@@ -1135,9 +1131,6 @@ def draft_decoding(args, temperature, seed):
         out['charter_timing_input'] = dict(getattr(args, 'charter_timing_identity', None) or {},
             label='charter_timing_input', reference='primary reference (freeze_panel hash-chosen chart)',
             rule='per core: beat features of the primary reference chart timing; absent state without valid timing')
-    constraints = decode_options(args).get('pattern_constraints')
-    if constraints:
-        out['pattern_constraints'] = dict(constraints, label='decode-time mania pattern limits (charter playability rule)')
     if getattr(args, 'consensus_min_jack_ms', None) is not None:
         out['consensus_min_jack_ms'] = float(args.consensus_min_jack_ms)
     if getattr(args, 'alternative_reference', False):
@@ -1720,7 +1713,8 @@ def style_response(drafts, panel, bands):
     for song_id, d in drafts.items():
         mode, duration = songs[song_id]['mode'], int(songs[song_id]['duration_us'])
         events = [Event(str(i), int(e['onset_us']), int(e['end_us']), e['type'],
-                        LaneLoc(int(e['lane'])) if mode == 'mania_4k' else LineLoc('rhythm', 'above', 0.))
+                        (LaneLoc(int(e['lane'])) if int(e['lane']) >= 0 else LineLoc('rhythm', 'above', 0.))
+                        if mode == 'mania_4k' else LineLoc('rhythm', 'above', 0.))
                   for i, e in enumerate(d['events'])]
         achieved = C.raw_controls(mode, events, [(0, duration)])
         mode_bands = {k: v for k, v in bands.items() if k in C.MODE_FIELDS[mode]}
@@ -2213,10 +2207,6 @@ def run_main():
                    'releases >= MS before the next press of the same key (else -> tap); playability repair (2026-11-02)')
     p.add_argument('--self-timing', type=Path, help='grid head (scripts/train_grid_head.py): estimate each song\'s beat grid '
                    'from audio and feed it as the timing input (audio-only capability readout; exclusive with --charter-timing)')
-    p.add_argument('--max-chord', type=int, help='decode-time mania limit: at most N keys per onset (charter playability '
-                   'rule, e.g. low difficulties); a decoding readout, recorded in decoding.pattern_constraints')
-    p.add_argument('--min-jack-ms', type=float, help='decode-time mania limit: no key pressed again within MS (anti-jack); '
-                   'within each 8 s core')
     p.add_argument('--control-band', action='append', metavar='FIELD=LO,HI',
                    help='charter style request per core (charter_intent_style), e.g. hold_occupancy_ratio=0.6,0.8; '
                         'repeatable; table bands of beatfcn.events.controls; exclusive with --density-request')
@@ -2236,7 +2226,7 @@ def run_main():
         p.error('--best-of needs model drafts (--checkpoint or --local-smoke)')
     model_only = [f for f, on in (('--history-reference', a.history_reference), ('--onset-fusion', a.onset_fusion),
                   ('--consensus', a.consensus), ('--density-request', a.density_request), ('--guidance', a.guidance),
-                  ('--control-band', a.control_band), ('--max-chord', a.max_chord), ('--min-jack-ms', a.min_jack_ms),
+                  ('--control-band', a.control_band),
                   ('--alternative-reference', a.alternative_reference),
                   ('--charter-timing', a.charter_timing))
                   if on not in (None, False)]
@@ -2246,8 +2236,7 @@ def run_main():
                                    ('--onset-fusion', a.onset_fusion), ('--control-band', a.control_band),
                                    ('--alternative-reference', a.alternative_reference), ('--no-score', a.no_score),
                                    ('--resume', a.resume), ('--history-reference', a.history_reference),
-                                   ('--guidance', a.guidance), ('--max-chord', a.max_chord),
-                                   ('--min-jack-ms', a.min_jack_ms), ('--autocast', a.autocast),
+                                   ('--guidance', a.guidance), ('--autocast', a.autocast),
                                    ('--compile-decode', a.compile_decode)) if on not in (None, False)]
     if a.score_from and decode_only:
         p.error(f"--score-from reads saved samples; {', '.join(decode_only)} belong to the decode run")

@@ -13,8 +13,7 @@ class RelativeHeadState(EventState):
         return (self.last_onset if self.last_onset >= 0 else self.request.start_us) // 1000
 
     def _heads_ms(self):
-        free = min(self.lane_ends) if self.request.mode == 'mania_4k' else 0
-        lo = (max(self.request.start_us, self.last_onset + 1, free) + 999) // 1000
+        lo = (max(self.request.start_us, self.last_onset + 1) + 999) // 1000
         hi = (self.request.end_us - 1) // 1000
         if self.request.allowed_types == ('hold',):
             hi = min(hi, self.request.duration_us // 1000 - 1)

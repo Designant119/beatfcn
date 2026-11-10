@@ -67,7 +67,8 @@ def same_key_stats(events):
     """Report D's p_jack and p_chordjack numerators/denominator over one list of mania events."""
     groups = defaultdict(int)
     for e in events:
-        groups[e.onset_us] |= 1 << e.lane
+        if e.lane >= 0:  # lane-free drafts carry no key decision
+            groups[e.onset_us] |= 1 << e.lane
     times = sorted(groups)
     jack = chord = fast = 0
     for a, b in zip(times, times[1:]):
@@ -261,39 +262,6 @@ def human_panel_mix(sample_path, meta_rows, tape):
                 mania_p_jack_chart_mean=round(float(np.mean(jack)), 4), mania_songs=len(jack))
 
 
-def mania_edits(exposure, meta_rows, firsts, tape, *, sample, seed, avoid_same_lane=False):
-    """Report D's p_jack on the windows the model is actually trained on, per density treatment."""
-    slots = [(step['indices'][s], step['rates'][s], step['edit_seeds'][s]) for step in exposure['steps']
-             for s in range(4)]
-    charts = np.searchsorted(firsts, [s[0] for s in slots], side='right')-1
-    mania = [i for i, c in enumerate(charts) if meta_rows[c]['mode'] == 'mania_4k']
-    chosen = np.random.default_rng(seed).choice(mania, min(sample, len(mania)), replace=False)
-    totals = defaultdict(lambda: np.zeros(3, np.int64))
-    windows = Counter()
-    for i in chosen:
-        index, rate, edit_seed = slots[i]
-        row = meta_rows[charts[i]]
-        arrays = load_chart(tape, row['target'])
-        start = int(index-firsts[charts[i]])*CORE_US
-        events, request = window(arrays, start, min(start+CORE_US, row['duration_us']), row['duration_us'], 'mania_4k')
-        native = same_key_stats(events)
-        key = 'native' if rate is None else f'x{rate:g}'
-        windows[key] += 1
-        if rate is not None and rate > 0:
-            edited, _ = edit_events_to_multiplier(events, request.start_us, request.end_us, float(rate), 'mania_4k',
-                                                  request.duration_us, seed=int(edit_seed), carry=request.known_carry,
-                                                  avoid_same_lane=avoid_same_lane)
-            stats = same_key_stats(edited)
-            totals[key] += stats
-            totals['all_trained'] += stats
-            totals[key+'_source'] += native
-        elif rate is None:
-            totals['native'] += native
-            totals['all_trained'] += native
-    return dict(windows=dict(windows), **{key: dict(p_jack=round(float(v[0]/max(v[2], 1)), 4),
-        p_chordjack=round(float(v[1]/max(v[2], 1)), 4), fast_gaps=int(v[2])) for key, v in totals.items()})
-
-
 def main():
     report = Path('/Users/yukoval/yukoval-projects/beatfcn/reports')
     goal = report/'goal-100usd-20261101'
@@ -323,9 +291,6 @@ def main():
                                    class_weights=dict(tap=.68, hold=1.33, flick=1.87, drag=1.74))
     out['exposure_mix'] = exposure_mix(exposure, meta_rows, firsts, tape, vocab=vocab, sample=args.sample,
                                        seed=args.seed, type_weight=1.)
-    out['mania_edits'] = mania_edits(exposure, meta_rows, firsts, tape, sample=args.sample, seed=args.seed)
-    out['mania_edits_avoid_same_lane'] = mania_edits(exposure, meta_rows, firsts, tape, sample=args.sample, seed=args.seed,
-                                                     avoid_same_lane=True)
     out['r5_samples_random100_cold_kind_t03'] = dict(
         human_same_songs=human_panel_mix(args.r100_samples, meta_rows, tape),
         single=sample_mix(args.r100_samples, meta_rows, tape),

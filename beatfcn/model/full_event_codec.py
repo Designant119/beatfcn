@@ -6,14 +6,14 @@ All decoder query metadata and legal supports depend only on the emitted prefix.
 """
 from dataclasses import dataclass
 from functools import lru_cache
-from itertools import groupby, product
+from itertools import groupby
 
 import numpy as np
 
 from beatfcn.events.canonical import TYPES
 from .event_canvas import RhythmEvent
 
-FIELDS = ('group', 'head_block', 'head_cell', 'head_ms', 'mania', 'member',
+FIELDS = ('group', 'head_block', 'head_cell', 'head_ms', 'member',
           'kind', 'tail_block', 'tail_cell', 'tail_ms')
 END, NEW = 0, 1
 PAD, BOS = 0, 1
@@ -34,7 +34,16 @@ class EventVocabulary:
     forced the decoder to memorise song position. Decoded events stay absolute
     microseconds; copy-time tokens and vocabulary size are unchanged.
 
-    Both default False so historical checkpoints/token streams reproduce.
+    The model is a timing extractor: mania uses the same member/kind/tail
+    grammar as Phira with ``lane == -1`` -- no lane is ever predicted,
+    supervised or gated (incoming ``known_carry`` holds stay accepted as timing
+    context with their lane ignored). Lane placement is the chart editor's
+    job, not the model's. The historical 81-token 4-lane pattern field and
+    every checkpoint trained with it are retired; the vocabulary shrank
+    1985 -> 1904, so old checkpoints fail the strict load by construction.
+
+    Both flags default False so historical token streams of THIS grammar
+    reproduce.
     The same vocabulary must be passed to encode_events/teacher_sequence/
     EventState and to the model that decodes them.
     """
@@ -53,7 +62,7 @@ class EventVocabulary:
 
     @property
     def sizes(self):
-        return (2, self.blocks + self.max_copy_times, 50, 40, 81, 2, 4,
+        return (2, self.blocks + self.max_copy_times, 50, 40, 2, 4,
                 self.blocks, 50, 40)
 
     @property
@@ -105,12 +114,8 @@ class EventRequest:
             raise ValueError('Copy times must be unique integer microseconds')
         for e in self.known_carry:
             if (e.type != 'hold' or not 0 <= e.onset_us < self.start_us < e.end_us <= self.duration_us
-                    or (self.mode == 'mania_4k' and e.lane not in range(4))):
+                    or (self.mode == 'mania_4k' and e.lane not in (*range(4), -1))):
                 raise ValueError('Invalid authorized incoming hold')
-
-
-def pattern_digits(code):
-    return tuple(code // (3 ** lane) % 3 for lane in range(4))
 
 
 class EventState:
@@ -125,19 +130,13 @@ class EventState:
         self.last_onset = self.onset = -1
         self.head_block = self.head_cell = self.tail_block = self.tail_cell = -1
         self.kind = None
-        self.hold_lanes = []
         self.group_members = 0
         self.events, self.tokens = [], []
-        self.lane_ends = [0] * 4
-        if request.mode == 'mania_4k':
-            for e in request.known_carry:
-                if self.lane_ends[e.lane]:
-                    raise ValueError('Multiple incoming holds on one key')
-                self.lane_ends[e.lane] = e.end_us
+        # known_carry holds are timing context only; their lane is never inspected
+        # (lane placement is the chart editor's job, not the grammar's).
 
     def _heads_ms(self):
-        free = min(self.lane_ends) if self.request.mode == 'mania_4k' else 0
-        lo = (max(self.request.start_us, self.last_onset + 1, free) + 999) // 1000
+        lo = (max(self.request.start_us, self.last_onset + 1) + 999) // 1000
         hi = (self.request.end_us - 1) // 1000
         if self.request.allowed_types == ('hold',):
             hi = min(hi, self.request.duration_us // 1000 - 1)
@@ -161,9 +160,8 @@ class EventState:
         if self.done:
             return ()
         lo, hi = self._heads_ms()
-        free = min(self.lane_ends) if self.request.mode == 'mania_4k' else 0
         copies = tuple(self.vocab.blocks + i for i, t in enumerate(self.request.copy_times)
-                       if max(self.request.start_us, self.last_onset + 1, free) <= t < self.request.end_us
+                       if max(self.request.start_us, self.last_onset + 1) <= t < self.request.end_us
                        and (self.request.allowed_types != ('hold',) or t // 1000 < self.request.duration_us // 1000))
         if self.phase == 'group':
             return (END, NEW) if lo <= hi or copies else (END,)
@@ -176,12 +174,6 @@ class EventState:
             return tuple(range(lo % 40, hi % 40 + 1)) if lo <= hi else ()
         hold_possible = self.onset // 1000 + 1 <= self.request.duration_us // 1000
         types = self.request.allowed_types or (('tap', 'hold') if self.request.mode == 'mania_4k' else TYPES)
-        if self.phase == 'mania':
-            free_choices = (0,) + ((1,) if 'tap' in types else ()) + ((2,) if 'hold' in types and hold_possible else ())
-            choices = [(0,) if end > self.onset else free_choices
-                       for end in self.lane_ends]
-            return tuple(sum(d * 3 ** lane for lane, d in enumerate(digits))
-                         for digits in product(*choices) if any(digits))
         if self.phase == 'member':
             return (END, NEW) if self.group_members else (NEW,)
         if self.phase == 'kind':
@@ -211,17 +203,15 @@ class EventState:
             t = self.tail_block * 2_000_000 + self.tail_cell * 40_000
         return FIELDS.index(self.phase), (t - self.request.start_us) / 1e6
 
-    def _add(self, kind, end, lane=-1):
+    def _add(self, kind, end):
         if len(self.events) >= self.request.max_events:
             raise ValueError('Event capacity exceeded; no truncation allowed')
-        self.events.append(RhythmEvent(self.onset, end, kind, lane))
+        self.events.append(RhythmEvent(self.onset, end, kind, -1))
         self.group_members += 1
-        if lane >= 0 and kind == 'hold':
-            self.lane_ends[lane] = end
 
     def _start(self, onset):
         self.onset, self.group_members = onset, 0
-        self.phase = 'mania' if self.request.mode == 'mania_4k' else 'member'
+        self.phase = 'member'
 
     def _finish_group(self):
         self.last_onset, self.onset, self.phase = self.onset, -1, 'group'
@@ -248,16 +238,6 @@ class EventState:
             self.head_cell, self.phase = value, 'head_ms'
         elif field == 'head_ms':
             self._start((self.head_block * 2000 + self.head_cell * 40 + value) * 1000)
-        elif field == 'mania':
-            digits = pattern_digits(value)
-            for lane, digit in enumerate(digits):
-                if digit == 1:
-                    self._add('tap', self.onset, lane)
-            self.hold_lanes = [lane for lane, digit in enumerate(digits) if digit == 2]
-            if self.hold_lanes:
-                self.phase = 'tail_block'
-            else:
-                self._finish_group()
         elif field == 'member':
             if value == END:
                 self._finish_group()
@@ -276,34 +256,15 @@ class EventState:
             self.tail_cell, self.phase = value, 'tail_ms'
         elif field == 'tail_ms':
             end = (self.tail_block * 2000 + self.tail_cell * 40 + value) * 1000
-            lane = self.hold_lanes.pop(0) if self.request.mode == 'mania_4k' else -1
-            self._add('hold', end, lane)
+            self._add('hold', end)
             self.tail_block = self.tail_cell = -1
-            if self.request.mode == 'phira':
-                self.phase = 'member'
-            elif self.hold_lanes:
-                self.phase = 'tail_block'
-            else:
-                self._finish_group()
+            self.phase = 'member'
 
 
 @lru_cache(maxsize=64)
 def _field_offsets(vocab):
     """First token id of every grammar field (``vocab.token(field, 0)``)."""
     return {field: vocab.token(field, 0) for field in FIELDS}
-
-
-@lru_cache(maxsize=4096)
-def _mania_values(occupied, free_choices):
-    # Same product order as EventState.allowed_values (lane 0 varies slowest).
-    choices = [(0,) if busy else free_choices for busy in occupied]
-    return tuple(sum(d * 3 ** lane for lane, d in enumerate(digits))
-                 for digits in product(*choices) if any(digits))
-
-
-@lru_cache(maxsize=4096)
-def _mania_tokens(occupied, free_choices, offset):
-    return tuple(offset + v for v in _mania_values(occupied, free_choices))
 
 
 class FastEventState(EventState):
@@ -321,19 +282,12 @@ class FastEventState(EventState):
         request = self.request
         if not request.copy_times:
             return ()
-        free = min(self.lane_ends) if request.mode == 'mania_4k' else 0
         return tuple(self.vocab.blocks + i for i, t in enumerate(request.copy_times)
-                     if max(request.start_us, self.last_onset + 1, free) <= t < request.end_us
+                     if max(request.start_us, self.last_onset + 1) <= t < request.end_us
                      and (request.allowed_types != ('hold',) or t // 1000 < request.duration_us // 1000))
 
     def _types(self):
         return self.request.allowed_types or (('tap', 'hold') if self.request.mode == 'mania_4k' else TYPES)
-
-    def _mania_key(self):
-        hold_possible = self.onset // 1000 + 1 <= self.request.duration_us // 1000
-        types = self._types()
-        free_choices = (0,) + ((1,) if 'tap' in types else ()) + ((2,) if 'hold' in types and hold_possible else ())
-        return tuple(end > self.onset for end in self.lane_ends), free_choices
 
     def allowed_values(self):
         if self.done:
@@ -352,8 +306,6 @@ class FastEventState(EventState):
                 return copies
             blocks = range(lo // 2000 - self.block_base, hi // 2000 - self.block_base + 1)
             return tuple(blocks) + copies if copies else blocks
-        if phase == 'mania':
-            return _mania_values(*self._mania_key())
         if phase == 'member':
             return range(END, NEW + 1) if self.group_members else range(NEW, NEW + 1)
         if phase == 'kind':
@@ -377,9 +329,6 @@ class FastEventState(EventState):
         (same order as ``allowed_tokens()``). ``count == 0`` is a dead end.
         """
         offset = _field_offsets(self.vocab)[self.phase]
-        if not self.done and self.phase == 'mania':
-            tokens = _mania_tokens(*self._mania_key(), offset)
-            return (tokens[0] if tokens else offset), len(tokens), tokens
         values = self.allowed_values()
         if isinstance(values, range):
             return offset + values.start, len(values), None
@@ -407,7 +356,8 @@ def encode_events(events, request, vocab=None):
                 or not request.start_us <= event.onset_us < request.end_us
                 or event.type not in (('tap', 'hold') if request.mode == 'mania_4k' else TYPES)
                 or (event.type != 'hold' and event.end_us != event.onset_us)
-                or (event.lane not in range(4) if request.mode == 'mania_4k' else event.lane != -1)):
+                # mania carries no lane decision; human-chart lanes are accepted and ignored
+                or (event.lane not in (*range(4), -1) if request.mode == 'mania_4k' else event.lane != -1)):
             raise ValueError('Invalid model-view event')
     for onset, group in groupby(ordered, key=lambda e: e.onset_us):
         members = list(group)
@@ -420,21 +370,15 @@ def encode_events(events, request, vocab=None):
             ms = onset // 1000
             for field, value in [('head_block', ms // 2000 - state.block_base), ('head_cell', ms % 2000 // 40), ('head_ms', ms % 40)]:
                 emit(field, value)
-        if request.mode == 'mania_4k':
-            if len({e.lane for e in members}) != len(members):
-                raise ValueError('Multiple heads at one time on one key')
-            emit('mania', sum((2 if e.type == 'hold' else 1) * 3 ** e.lane for e in members))
-            for event in sorted((e for e in members if e.type == 'hold'), key=lambda e: e.lane):
+        for event in sorted(members, key=lambda e: (TYPES.index(e.type), e.end_us)):
+            emit('member', NEW)
+            emit('kind', TYPES.index(event.type))
+            if event.type == 'hold':
                 tail(event)
-        else:
-            for event in sorted(members, key=lambda e: (TYPES.index(e.type), e.end_us)):
-                emit('member', NEW)
-                emit('kind', TYPES.index(event.type))
-                if event.type == 'hold':
-                    tail(event)
-            emit('member', END)
+        emit('member', END)
     emit('group', END)
-    if tuple(sorted(state.events)) != tuple(ordered):
+    check = [RhythmEvent(e.onset_us, e.end_us, e.type, -1) for e in ordered] if request.mode == 'mania_4k' else ordered
+    if tuple(sorted(state.events)) != tuple(check):
         raise AssertionError('Grammar did not preserve the target multiset')
     return tuple(state.tokens)
 

@@ -17,13 +17,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import wave
-import zipfile
 
 import numpy as np
 import torch
 
 from beatfcn.audio.mert2 import CELL_SAMPLES, REVISION, SR, FrozenMert2, Mert2Spec
-from beatfcn.events.osu_mania import parse_osu
 from beatfcn.model.full_event_model import FullEventConfig, FullEventModel
 import scripts.draft_song as ds
 import scripts.run_workflow_benchmark as wb
@@ -172,45 +170,31 @@ class DraftSongTests(unittest.TestCase):
         self.assertTrue(r['complete'])
         self.assertEqual(mert.calls, 1)
         self.assertTrue(all(s['complete'] and s['cores'] == 2 for s in r['samples']))
-        self.assertEqual(len(r['samples']), 8)
+        self.assertEqual(len(r['samples']), 1)  # mania is timing-only: single sample by default
         self.assertGreater(r['draft']['notes'], 0)
         self.assertEqual(r['draft']['legality'], [])
-        # Export: .osz holds the .osu + the original audio; the repo parser round-trips the notes.
-        osz = Path(r['export']['osz'])
-        osu = Path(r['export']['chart']['path'])
-        with zipfile.ZipFile(osz) as z:
-            self.assertEqual(sorted(z.namelist()), sorted([osu.name, 'audio.mp3']))
-            self.assertEqual(z.read('audio.mp3'), self.audio.read_bytes())
-            self.assertEqual(z.read(osu.name), osu.read_bytes())  # rebuilt after the timing splice
-        self.assertTrue(r['export']['disk_roundtrip']['exact'])
-        parsed = parse_osu(osu.read_bytes(), osu.name)
-        self.assertFalse(parsed.quarantined)
-        # Clock: written = model - c, c(osu, mp3) = +14 ms.
-        self.assertEqual((r['clock']['c_ms'], r['clock']['basis'], r['export']['clock']['shift_us']),
-                         (14, 'source_codec', 14_000))
+        # Timing-only extraction: no .osu export, the draft events ARE the product (editor --raw).
+        self.assertIn('editor/infer.py --raw', r['draft']['export'])
         model_events = json.loads((out/'draft-events.json').read_text())['events']
-        kept = [e for e in model_events if e['onset_us'] >= 14_000]
-        self.assertEqual(r['export']['clock']['dropped_before_zero'], len(model_events)-len(kept))
-        self.assertEqual(sorted((e.onset_us, e.end_us, e.location.lane) for e in parsed.events),
-                         sorted((e['onset_us']-14_000, e['end_us']-14_000, e['lane']) for e in kept))
-        # --timing: the [TimingPoints] block is written unchanged; the model saw it shifted onto its clock (+c).
-        self.assertEqual(ds.timing_section_lines(osu.read_bytes()), TIMING_LINES)
-        self.assertEqual(ds._timing_rows(parsed), ds._timing_rows(parse_osu(TIMING_OSU.encode(), 't.osu')))
+        self.assertTrue(model_events)
+        self.assertTrue(all(e['lane'] == -1 for e in model_events))
+        # Clock: c(osu, mp3) = +14 ms still recorded for the editor to apply.
+        self.assertEqual((r['clock']['c_ms'], r['clock']['basis']), (14, 'source_codec'))
+        # --timing: the beat features input is shifted onto the model clock (+c).
         beat = r['timing']['beat_features']
         self.assertTrue(beat['used'])
         self.assertEqual(beat['segments_model_clock'], [[451_000., 400_000., 4], [3_014_500., 375_500., 3]])
         self.assertTrue(all(s['charter_timing_cores'] == s['cores'] for s in r['samples']))  # every core got it
         self.assertTrue(all(s['conditioned_cores'] == 0 for s in r['samples']))  # no tier / density request
-        self.assertEqual(r['export']['timing_points']['lines'], 3)
         # Receipt: model identity, decoding settings, timings.
         disk = json.loads((out/'draft-receipt.json').read_text())
         self.assertTrue(disk['complete'])
         self.assertEqual(disk['model']['sha256'], sha(self.model))
         self.assertEqual(disk['model']['kind'], 'exported')
         self.assertEqual(disk['features']['mel_normalization']['sha256'], sha(self.stats))
-        self.assertEqual(disk['decoding']['seeds'], list(range(8)))
+        self.assertEqual(disk['decoding']['seeds'], [0])
         self.assertEqual(disk['decoding']['field_temperature'], ds.PRODUCT_FIELD_TEMPERATURE)
-        self.assertFalse(disk['decoding']['matches_product_default'])  # T = 0.05 here
+        self.assertFalse(disk['decoding']['matches_product_default'])  # T = 0.05 and 1 sample here
         self.assertEqual(disk['decoding']['charter_timing_input']['label'], 'charter_timing_input')
         for key in ('decode_s', 'mert_s', 'mel_s', 'model_load_s', 'generation_s', 'export_s', 'total_s'):
             self.assertIn(key, disk['timings'])
@@ -345,17 +329,6 @@ class TableTests(unittest.TestCase):
         if (ROOT/ds.KNOWN_MEL_STATS[known]).is_file():  # volume path absent locally -> the repo copy
             _, identity = ds.resolve_mel_normalization(dict(path='/data/data-contract-v2-mel.json', sha256=known))
             self.assertEqual(identity['path'], str(ROOT/ds.KNOWN_MEL_STATS[known]))
-
-    def test_splice_replaces_only_the_timing_block(self):
-        from beatfcn.events.chart_export import osu_mania_bytes
-        body, _ = osu_mania_bytes([dict(onset_us=1_000_000, end_us=1_000_000, type='tap', lane=1)])
-        spliced = ds.splice_timing_points(body, TIMING_LINES)
-        self.assertEqual(ds.timing_section_lines(body), ['0,500,4,1,0,100,1,0'])  # the exporter placeholder
-        self.assertEqual(ds.timing_section_lines(spliced), TIMING_LINES)
-        parts = lambda b: (b.split(b'[TimingPoints]')[0], b.split(b'[HitObjects]')[1])  # noqa: E731
-        self.assertEqual(parts(body), parts(spliced))
-        self.assertEqual([(e.onset_us, e.location.lane) for e in parse_osu(spliced, 'x.osu').events],
-                         [(1_000_000, 1)])
 
 
 if __name__ == '__main__':

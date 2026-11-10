@@ -59,7 +59,7 @@ def load_recipe(spec, init_config):
         raise ValueError(f'{base_path} is not the plan this candidate was written against')
     recipe = json.loads(base_path.read_text())
     recipe['config'] = dict(init_config)
-    for key in ('seed', 'loader_workers', 'loader_prefetch', 'avoid_same_lane', 'song_style'):
+    for key in ('seed', 'loader_workers', 'loader_prefetch', 'song_style'):
         if key in spec:
             recipe[key] = spec[key]
     return recipe

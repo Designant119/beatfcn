@@ -20,7 +20,6 @@ class RelativeHeadCodecTest(unittest.TestCase):
             state.apply(b)
             self.assertEqual(old.events, state.events)
             self.assertEqual(old.last_onset, state.last_onset)
-            self.assertEqual(old.lane_ends, state.lane_ends)
         self.assertTrue(state.done)
         self.assertEqual(sorted(state.events), sorted(events))
         seq = teacher_sequence(tokens, request)

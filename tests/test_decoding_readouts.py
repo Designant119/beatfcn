@@ -99,7 +99,7 @@ class OnsetFusionGenerationTests(unittest.TestCase):
         ref, fast = both(self.model, self.inputs, self.requests, 300, **fusion)
         self.assertEqual(ref, fast)
         self.assertEqual(ref[0]['decoding']['onset_fusion']['weight'], .5)
-        for kw in (dict(temperature=1.), dict(temperature=.8, top_p=.9, field_temperature={'kind': .3, 'mania': .5})):
+        for kw in (dict(temperature=1.), dict(temperature=.8, top_p=.9, field_temperature={'kind': .3, 'head_ms': .5})):
             gens = [torch.Generator().manual_seed(i) for i in range(4)]
             ref, fast = both(self.model, self.inputs, self.requests, 300, generator=gens, **kw, **fusion)
             self.assertEqual(ref, fast)

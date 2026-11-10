@@ -464,42 +464,6 @@ def read_timing(path):
                 other_quarantine=sorted({i.code for i in chart.quarantine_reasons()} - TIMING_ISSUES))
 
 
-def splice_timing_points(osu_bytes, lines):
-    """Replace the exporter's [TimingPoints] block with ``lines`` (verbatim), CRLF like the exporter."""
-    rows = bytes(osu_bytes).decode('utf-8').split('\r\n')
-    start = rows.index('[TimingPoints]')
-    end = next(i for i in range(start+1, len(rows)) if rows[i].startswith('['))
-    return '\r\n'.join(rows[:start+1] + list(lines) + [''] + rows[end:]).encode('utf-8')
-
-
-def write_verbatim_timing(export, timing, events):
-    """--timing on mania: the written .osu carries the charter's [TimingPoints] block unchanged; re-verified with
-    the repo parser (notes exact, timing rows identical) and the .osz rebuilt."""
-    from beatfcn.events.osu_mania import parse_osu
-    osu = Path(export['chart']['path'])
-    data = splice_timing_points(osu.read_bytes(), timing['lines'])
-    parsed = parse_osu(data, osu.name)
-    source = parse_osu(Path(timing['path']).read_bytes(), Path(timing['path']).name)
-    same_rows = _timing_rows(parsed) == _timing_rows(source)
-    same_lines = timing_section_lines(data) == timing['lines']
-    if not (same_rows and same_lines) or parsed.timing is None:
-        raise SystemExit('Verbatim charter timing did not survive the osu round trip')
-    osu.write_bytes(data)
-    roundtrip = wb.verify_osu_on_disk(osu, events)
-    if not roundtrip['exact']:
-        raise SystemExit('Draft notes changed after writing the charter timing')
-    files = [osu, osu.parent/f"audio{export['audio']['ext']}"]
-    if export.get('osz'):
-        Path(export['osz']).unlink()
-        export['osz'] = str(wb.write_osz(Path(export['osz']), files))
-    export['disk_roundtrip'] = roundtrip
-    export['timing_points'] = dict(written='verbatim [TimingPoints] block of --timing (playback clock, unshifted)',
-                                   lines=len(timing['lines']), red_lines=timing['red_lines'],
-                                   green_lines=timing['green_lines'], rows_identical=same_rows,
-                                   lines_identical=same_lines)
-    return export
-
-
 # ------------------------------------------------------------------ conditions
 def constant_density_provider(density, *, cell_us, record):
     """condition_provider: every core requests one constant heads/s ``density`` -- the same rendering as
@@ -623,7 +587,9 @@ def parse_args(argv=None):
     level.add_argument('--mania-star', type=float, metavar='STAR',
                        help='osu!mania 4K star preset, about 1 .. 7 (approximate star; database median density)')
     p.add_argument('--guidance', type=float, help='CFG weight for --tier/--density (default: plain conditioning)')
-    p.add_argument('--consensus', type=int, default=PRODUCT_CONSENSUS, help='samples per draft (1 = single sample)')
+    p.add_argument('--consensus', type=int, default=None,
+                   help='samples per draft (1 = single sample; default: mania 1 -- timing-only, no lane patterns '
+                        'to vote on -- and Phira %d)' % PRODUCT_CONSENSUS)
     p.add_argument('--consensus-pattern', choices=('majority', 'anchor'), default='anchor',
                    help='pattern of each kept onset: per-onset majority, or the most central sample')
     p.add_argument('--consensus-votes', type=int, help=f'samples an onset needs (default: {PRODUCT_VOTES} of 8, scaled)')
@@ -749,6 +715,11 @@ def run(args, *, extractor=None, decoder=None):
         device = args.device or auto_device()
         tick = time.monotonic()
         model, model_identity, declared = load_model(args.model, device, args.weights)
+        if args.consensus is None:
+            args.consensus = 1 if args.mode == 'mania_4k' else PRODUCT_CONSENSUS
+        elif args.mode == 'mania_4k' and args.consensus > 1:
+            raise SystemExit('mania consensus voted on 4-lane patterns, which the grammar no longer predicts '
+                             '(timing-only extraction); use --consensus 1 (the editor default)')
         plan = json.loads(Path(args.plan).read_text()) if args.plan else {}
         if plan:
             if declared is not None and plan.get('mel_normalization') not in (None, declared):
@@ -857,9 +828,13 @@ def run(args, *, extractor=None, decoder=None):
                 min_votes=args.consensus_votes or max(1, round(len(seeds)*PRODUCT_VOTES/PRODUCT_CONSENSUS)),
                 fragment_guard=args.fragment_guard)
         if args.hold_release_ms:
-            from beatfcn.train.workflow_metrics import repair_hold_release
-            notes, aggregation['hold_release_repair'] = repair_hold_release(
-                notes, args.mode, min_release_us=int(round(args.hold_release_ms * 1000)))
+            if args.mode == 'mania_4k':
+                aggregation['hold_release_repair'] = dict(skipped='mania carries no lane decision; same-key '
+                                                               'release repair is the editor placement pass')
+            else:
+                from beatfcn.train.workflow_metrics import repair_hold_release
+                notes, aggregation['hold_release_repair'] = repair_hold_release(
+                    notes, args.mode, min_release_us=int(round(args.hold_release_ms * 1000)))
         aggregation['legality'] = wb.consensus_legality(notes, args.mode, duration_us)
         timings['consensus_s'] = time.monotonic()-tick
         if aggregation['legality']:
@@ -888,25 +863,22 @@ def run(args, *, extractor=None, decoder=None):
                               'unconditioned')
         version = args.chart_version or (f'BeatFCN draft ({label}, '
                                          + ('single sample' if len(seeds) == 1 else f'consensus {len(seeds)}') + ')')
-        export = wb.export_song(out/stem, stem, dict(mode=args.mode, audio_sha256=audio_sha), events, audio,
-                                title=args.title or audio_path.stem, artist=args.artist, version=version,
-                                timing_points=timing['red_points'] if timing and args.mode == 'mania_4k' else None,
-                                clock_shift_us=shift_us,
-                                clock_source=f"database constant c({clock['source']}, {codec}) = {clock['c_ms']} ms "
-                                             f"[{clock['basis']}]")
+        if args.mode == 'mania_4k':
+            # 采音模式: the model is a timing extractor; lane placement is the chart editor's
+            # job. draft-events.json above is the product (see editor/infer.py --raw).
+            export = dict(skipped='mania .osu export needs lanes the grammar no longer predicts; '
+                                  'use editor/infer.py --raw on draft-events.json')
+            receipt['draft']['export'] = export['skipped']
+        else:
+            export = wb.export_song(out/stem, stem, dict(mode=args.mode, audio_sha256=audio_sha), events, audio,
+                                    title=args.title or audio_path.stem, artist=args.artist, version=version,
+                                    timing_points=timing['red_points'] if timing and args.mode == 'mania_4k' else None,
+                                    clock_shift_us=shift_us,
+                                    clock_source=f"database constant c({clock['source']}, {codec}) = {clock['c_ms']} ms "
+                                                 f"[{clock['basis']}]")
         if export.get('failed'):
             raise SystemExit('Export failed: ' + export['failed'])
-        if args.mode == 'mania_4k':
-            if not export['disk_roundtrip']['exact']:
-                raise SystemExit('Exported .osu does not round-trip the draft')
-            if timing is not None:
-                written = [dict(e, onset_us=e['onset_us']-shift_us, end_us=e['end_us']-shift_us) for e in events
-                           if e['onset_us']-shift_us >= 0]
-                export = write_verbatim_timing(export, timing, written)
-            else:
-                export['timing_points'] = dict(written='placeholder: one 120 BPM point at 0 ms (no --timing); the '
-                                                       'charter is expected to time the song')
-        elif timing is not None:
+        if args.mode == 'phira' and timing is not None:
             export['timing_points'] = dict(written='none: the Phira preview has no charter timing (beat features only)')
         timings['export_s'] = time.monotonic()-tick
         receipt['export'] = export

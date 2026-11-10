@@ -106,8 +106,7 @@ def run(arm, step):
                                  dynamic_min_token=support[0],static_top_removed=shadow_rank['top_token'] not in support)
                     if state.phase == 'head_ms':
                         lo,_ = state._heads_ms()
-                        free = min(state.lane_ends) if request.mode == 'mania_4k' else 0
-                        physical_lo = (max(request.start_us,state.last_onset+1,free)+999)//1000
+                        physical_lo = (max(request.start_us,state.last_onset+1)+999)//1000
                         onset_ms=state.head_block*2000+state.head_cell*40+entry['value']
                         entry.update(onset_ms=onset_ms,physical_lower_gap_ms=onset_ms-physical_lo,
                                      within_selected_cell_gap_ms=onset_ms-lo,

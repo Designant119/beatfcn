@@ -33,7 +33,7 @@ def histories(truth, generated, request):
         if state.phase!='group' or state.last_onset!=anchor or state.done:raise ValueError('Anchor is not a completed group')
         states.append(state)
     a,b=states
-    if (a.phase,a.last_onset,a.onset,a.lane_ends,a.query(),a.allowed_tokens())!=(b.phase,b.last_onset,b.onset,b.lane_ends,b.query(),b.allowed_tokens()):
+    if (a.phase,a.last_onset,a.onset,a.query(),a.allowed_tokens())!=(b.phase,b.last_onset,b.onset,b.query(),b.allowed_tokens()):
         raise ValueError('Physical state/support differs after splice')
     full=encode_events(truth,request)
     if full[:len(prefixes[0])]!=prefixes[0]:raise ValueError('Human prefix differs from full target')

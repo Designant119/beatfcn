@@ -33,10 +33,12 @@ def edit_utility(pred, truth, mode, *, tolerance_us=20_000, delete_cost=1., revi
         return sum(match_f1(ps.get(k, []), ts.get(k, []), tolerance_us)[0] for k in ps.keys() | ts.keys())
 
     p_times, t_times = sorted({e.onset_us for e in pred}), sorted({e.onset_us for e in truth})
-    lane_key = lambda e: (e.type, e.location.lane if mode == 'mania_4k' else None)
+    # mania drafts carry no lane decision: lane leaves the match keys
+    lane_blind = mode == 'mania_4k' and any(getattr(e.location, 'lane', -1) < 0 for e in pred)
+    lane_key = lambda e: (e.type, e.location.lane if mode == 'mania_4k' and not lane_blind else None)
     nonholds_p, nonholds_t = [e for e in pred if not e.is_hold], [e for e in truth if not e.is_hold]
     full_tp = match(nonholds_p, nonholds_t, lane_key) + hold_matches(
-        pred, truth, tolerance_us, tolerance_us, match_lane=mode == 'mania_4k')['tp']
+        pred, truth, tolerance_us, tolerance_us, match_lane=mode == 'mania_4k' and not lane_blind)['tp']
     return {
         'schema': 'beatfcn.reference_edit_proxy.v1', 'tolerance_us': tolerance_us,
         'costs': {'insert': 1., 'delete': delete_cost, 'review_each_prediction': review_cost},

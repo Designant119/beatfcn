@@ -17,20 +17,20 @@ FAMILIES = ('start', 'groups', 'onset', 'type', 'members', 'hold_end')
 
 def semantic_decision_weights(sequence):
     """CPU preparation for one already grammar-validated teacher sequence."""
-    fields, valid, allowed, targets = (np.asarray(sequence[k]) for k in ('fields', 'valid', 'allowed', 'targets'))
-    if (fields.ndim != 1 or valid.shape != fields.shape or targets.shape != fields.shape
-            or allowed.ndim != 2 or len(allowed) != len(fields)
+    rows, valid, allowed, targets = (np.asarray(sequence[k]) for k in ('fields', 'valid', 'allowed', 'targets'))
+    if (rows.ndim != 1 or valid.shape != rows.shape or targets.shape != rows.shape
+            or allowed.ndim != 2 or len(allowed) != len(rows)
             or valid.dtype != np.bool_ or allowed.dtype != np.bool_):
         raise ValueError('Expected one CPU teacher sequence with boolean masks')
     count = int(valid.sum())
     if not count or not valid[:count].all() or valid[count:].any():
         raise ValueError('Teacher validity must be a nonempty prefix')
-    if (not np.issubdtype(fields.dtype, np.integer) or not np.issubdtype(targets.dtype, np.integer)
-            or np.any((fields[:count] < 0) | (fields[:count] >= len(FIELDS)))
+    if (not np.issubdtype(rows.dtype, np.integer) or not np.issubdtype(targets.dtype, np.integer)
+            or np.any((rows[:count] < 0) | (rows[:count] >= len(FIELDS)))
             or np.any((targets[:count] < 0) | (targets[:count] >= allowed.shape[1]))
             or not allowed[np.arange(count), targets[:count]].all()):
         raise ValueError('Invalid or illegal teacher target')
-    names = [FIELDS[int(f)] for f in fields[:count]]
+    names = [FIELDS[int(f)] for f in rows[:count]]
     if names[0] != 'group':
         raise ValueError('Initial semantic decision must be group activity')
     choice = allowed.sum(-1) > 1
@@ -52,7 +52,7 @@ def semantic_decision_weights(sequence):
         else:
             if field == 'group':
                 family = 'start' if pos == 0 else 'groups'
-            elif field in ('kind', 'mania'):
+            elif field == 'kind':
                 family = 'type'
             elif field == 'member':
                 family = 'members'
@@ -63,7 +63,7 @@ def semantic_decision_weights(sequence):
         if positions:
             units[family].append(positions)
         pos = stop
-    weights = np.zeros(len(fields), np.float32)
+    weights = np.zeros(len(rows), np.float32)
     for family_units in units.values():
         if family_units:
             coefficient = 1. / (len(FAMILIES) * len(family_units))

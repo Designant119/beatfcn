@@ -15,11 +15,6 @@ class SupportTraceTest(unittest.TestCase):
         self.assertEqual([state.vocab.decision(t)[1] for t in actual],list(range(26,40)))
         self.assertEqual([state.vocab.decision(t)[1] for t in shadow],list(range(40)))
 
-    def test_shadow_keeps_mania_occupied_lanes(self):
-        state=EventState(EventRequest('mania_4k',0,8000000,10000000))
-        state.last_onset=6000000;state.phase='head_block';state.lane_ends=[4000000]*4
-        self.assertEqual([state.vocab.decision(t)[1] for t in static_head_support(state)],[2,3])
-
     def test_rank_ties_use_original_support_order(self):
         result=rank(torch.tensor([7.,5.,7.]),(2,0,1))
         self.assertEqual(result['top_token'],2)

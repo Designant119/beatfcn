@@ -223,7 +223,7 @@ class CounterfactualExposureDataset(ExposureDataset):
                  sequence_buckets=None, cell_us=100_000, curve_cell_us=2_000_000,
                  start_update=0, vocabulary=None, onset=None, mel_bins=0,
                  density_scale=16., history_context=None, charter_timing=None, alternative_context=None,
-                 level_curve=None, avoid_same_lane=False, song_style=None):
+                 level_curve=None, song_style=None):
         if exposure.get('format') != FORMAT:
             raise ValueError('Counterfactual training requires a counterfactual-exposure-v2 '
                              'exposure; rebuild it with scripts/prepare_native_counterfactual_training.py')
@@ -261,7 +261,6 @@ class CounterfactualExposureDataset(ExposureDataset):
         self.song_style = None if not song_style else float(song_style['p'])
         self._song_bands_cache = {}
         self._song_rate = {}
-        self.avoid_same_lane = bool(avoid_same_lane)
 
     def sample(self, request_index, rate, *, edit_seed, curve_specified, specified_fields,
                history_key=None, timing_key=None, alternative_key=None):
@@ -282,8 +281,7 @@ class CounterfactualExposureDataset(ExposureDataset):
         events = native
         if rate is not None:
             events, _ = edit_events_to_multiplier(native, request.start_us, request.end_us,
-                float(rate), request.mode, request.duration_us, seed=int(edit_seed),
-                carry=request.known_carry, avoid_same_lane=self.avoid_same_lane)
+                float(rate), request.mode, request.duration_us, seed=int(edit_seed))
         sequence = request_sequence(self.panel, request_index, request, self.vocab,
                                     events=None if rate is None else events)
         conditions, audit = sample_conditions(request.mode, events, request,
@@ -498,8 +496,6 @@ def plan_loader_settings(plan):
         settings['alternative_context'] = normalize_alternative_context(plan['alternative_context'])
     if plan.get('level_curve'):
         settings['level_curve'] = normalize_level_curve(plan['level_curve'])
-    if plan.get('avoid_same_lane'):
-        settings['avoid_same_lane'] = True
     if plan.get('song_style'):
         settings['song_style'] = plan['song_style']
     if plan.get('charter_timing'):
@@ -517,7 +513,7 @@ def build_exposure_loader(panel, exposure, *, microbatch, input_shapes=None,
                           counterfactual_relative=True, grouped_max_tokens=None,
                           vocabulary=None, curve_cell_us=2_000_000, onset=None,
                           mel_bins=0, density_scale=16., history_context=None, charter_timing=None,
-                          alternative_context=None, level_curve=None, avoid_same_lane=False, song_style=None):
+                          alternative_context=None, level_curve=None, song_style=None):
     """Counterfactual mode follows the exposure format, not a loose plan flag.
 
     ``counterfactual_rates``/``counterfactual_relative`` are accepted for plan
@@ -556,7 +552,7 @@ def build_exposure_loader(panel, exposure, *, microbatch, input_shapes=None,
         cell_us=cell_us, curve_cell_us=curve_cell_us, start_update=start_update,
         vocabulary=vocabulary, onset=onset, mel_bins=mel_bins, density_scale=density_scale,
         history_context=history_context, charter_timing=charter_timing,
-        alternative_context=alternative_context, level_curve=level_curve, avoid_same_lane=avoid_same_lane,
+        alternative_context=alternative_context, level_curve=level_curve,
         song_style=song_style)
         if counterfactual else
         ExposureDataset(panel, exposure, microbatch=min(microbatch, 4),

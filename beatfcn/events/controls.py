@@ -124,7 +124,9 @@ def raw_controls(mode: str, events, editable: Iterable[Interval]) -> dict:
     if gs:
         out['chord_ratio'] = sum(len(g) >= 2 for g in gs) / len(gs)
     if mode == 'mania_4k' and len(gs) >= 2:
-        lanes = [{h.location.lane for h in g} for g in gs]
+        # mania drafts carry no lane decision: -1 keys never
+        # intersect, so jack_ratio reads as 0 (placement is downstream's job).
+        lanes = [{getattr(h.location, 'lane', -1) for h in g} - {-1} for g in gs]
         out['jack_ratio'] = sum(bool(a & b) for a, b in zip(lanes, lanes[1:])) / (len(gs) - 1)
     if mode == 'phira' and heads:
         out['flick_ratio'] = sum(h.type == 'flick' for h in heads) / len(heads)

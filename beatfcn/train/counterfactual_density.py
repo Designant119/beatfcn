@@ -17,32 +17,6 @@ def _is_hold(event):
     return event.type == 'hold'
 
 
-def _lane_free(events, lane, onset, mode):
-    if mode != 'mania_4k':
-        return True
-    for event in events:
-        if event.lane != lane:
-            continue
-        end = event.end_us if _is_hold(event) else event.onset_us
-        if event.onset_us <= onset <= end:
-            return False
-    return True
-
-
-def _interval_free(events, lane, onset, end):
-    """Match the codec's half-open hold interval, including future heads."""
-    for event in events:
-        if event.lane != lane:
-            continue
-        if event.onset_us == onset:
-            return False
-        if _is_hold(event) and event.onset_us <= onset < event.end_us:
-            return False
-        if end > onset and onset <= event.onset_us < end:
-            return False
-    return True
-
-
 def _add_taps(events, count, cell_start, cell_end, mode, duration_us, context):
     added = []
     if count <= 0:
@@ -53,21 +27,8 @@ def _add_taps(events, count, cell_start, cell_end, mode, duration_us, context):
         onset = (onset // 1000) * 1000
         if onset >= cell_end or onset >= duration_us:
             continue
-        if mode == 'mania_4k':
-            placed = False
-            for shift in range(0, 8):
-                candidate = onset + shift * 1000
-                if candidate >= cell_end:
-                    break
-                for lane in range(4):
-                    if _lane_free(context + added, lane, candidate, mode):
-                        added.append(RhythmEvent(candidate, candidate, 'tap', lane))
-                        placed = True
-                        break
-                if placed:
-                    break
-        else:
-            added.append(RhythmEvent(onset, onset, 'tap', -1))
+        # mania carries no lane decision; key occupancy is the editor placement pass
+        added.append(RhythmEvent(onset, onset, 'tap', -1))
     return added
 
 
@@ -100,10 +61,11 @@ def edit_events_to_density(events, start_us, end_us, rate, mode, duration_us):
             kept = _remove_events(current, len(current) - desired)
         else:
             kept = list(current)
-        kept = kept + _add_taps(kept, max(0, desired - len(kept)), lo, hi, mode, duration_us, out + kept)
+            kept = kept + _add_taps(kept, max(0, desired - len(kept)), lo, hi, mode, duration_us, out + kept)
         out.extend(kept)
         actual.append(len(kept) / ((hi - lo) / 1e6))
-    out = sanitize_mania(out, mode)
+    if mode == 'mania_4k':  # uniform lane-free targets; human lanes never enter training data
+        out = [RhythmEvent(e.onset_us, e.end_us, e.type, -1) for e in out]
     return out, actual
 
 
@@ -147,8 +109,7 @@ def scaled_count(count, multiplier):
 
 
 def edit_events_to_multiplier(events, start_us, end_us, multiplier, mode,
-                              duration_us, *, seed=0, min_gap_us=MIN_GAP_US,
-                              carry=(), avoid_same_lane=False):
+                              duration_us, *, seed=0, min_gap_us=MIN_GAP_US):
     """Rescale a window's density by a relative multiplier while keeping human content.
 
     Down-sampling draws a uniform subset of the cell's own events, so the type mix
@@ -161,12 +122,6 @@ def edit_events_to_multiplier(events, start_us, end_us, multiplier, mode,
     returned per-cell density is the honest achieved value. A cell that is empty
     in the source stays empty.
 
-    ``carry`` holds the request's authorized incoming holds (onset before
-    start_us). They are never edited or emitted, but in mania they occupy their
-    lane until their tail, so an inserted head/hold may not land on a held key.
-
-    ``avoid_same_lane`` (mania; default off = byte-identical): an inserted note prefers a key not used by its two
-    neighbouring onsets. Off, the source's own key comes first, and x1.5 / x2 targets hold about 9-11x the native jack rate.
     """
     if multiplier < 0:
         raise ValueError('Density multiplier must be nonnegative')
@@ -211,22 +166,8 @@ def edit_events_to_multiplier(events, start_us, end_us, multiplier, mode,
                     end = onset + max(0, source.end_us - source.onset_us) if _is_hold(source) else onset
                     if end > duration_us:
                         continue
-                    lane = source.lane
-                    if mode == 'mania_4k':
-                        # Include untouched future cells: a new hold must not cover
-                        # a human head that will only be added to `out` later.
-                        candidates = [lane] + [other for other in range(4) if other != lane]
-                        if avoid_same_lane:
-                            later = [t for t in onsets if t > onset]
-                            around = {e.lane for e in context if e.onset_us == left or (later and e.onset_us == later[0])}
-                            rng.shuffle(candidates)
-                            candidates.sort(key=lambda candidate: candidate in around)
-                        occupied = list(carry) + list(events) + out + kept
-                        lane = next((candidate for candidate in candidates
-                                     if _interval_free(occupied, candidate, onset, end)), None)
-                        if lane is None:
-                            continue
-                    added = RhythmEvent(onset, end, source.type, lane)
+                    # mania carries no lane decision; key occupancy is the editor placement pass
+                    added = RhythmEvent(onset, end, source.type, -1)
                     break
                 if added is None:
                     break
@@ -235,42 +176,9 @@ def edit_events_to_multiplier(events, start_us, end_us, multiplier, mode,
         out.extend(kept)
         actual.append(len(kept) / ((hi - lo) / 1e6))
     out.sort(key=lambda event: (event.onset_us, event.type, event.lane))
+    if mode == 'mania_4k':  # uniform lane-free targets; human lanes never enter training data
+        out = [RhythmEvent(e.onset_us, e.end_us, e.type, -1) for e in out]
     return out, actual
-
-
-def sanitize_mania(events, mode):
-    """Drop lane conflicts that the mania codec cannot express.
-
-    Jittered duplicates can put a hold behind an earlier note in the same lane
-    (or two notes on one onset/lane), which the teacher sequence rejects with
-    `Illegal mania:<pattern>`. Keep the earliest note and clip hold tails.
-    """
-    if mode != 'mania_4k':
-        return list(events)
-    lanes = defaultdict(list)
-    for event in events:
-        lane = event.lane if event.lane in range(4) else None
-        if lane is not None:
-            lanes[lane].append(event)
-    seen = set()
-    out = []
-    for lane, lane_events in lanes.items():
-        lane_events.sort(key=lambda event: (event.onset_us, _is_hold(event)))
-        for index, event in enumerate(lane_events):
-            key = (event.onset_us, lane)
-            if key in seen:
-                continue
-            seen.add(key)
-            end = event.end_us
-            if _is_hold(event):
-                following = lane_events[index+1].onset_us if index+1 < len(lane_events) else None
-                if following is not None and end >= following:
-                    end = following - 1000
-                if end <= event.onset_us:
-                    continue
-            out.append(RhythmEvent(event.onset_us, end, event.type, lane))
-    out.sort(key=lambda event: (event.onset_us, event.type, event.lane))
-    return out
 
 
 def real_density_curve(events, start_us, end_us):

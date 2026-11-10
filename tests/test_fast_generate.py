@@ -18,8 +18,7 @@ import torch
 
 from beatfcn.model import full_event_generate as gen
 from beatfcn.model.event_canvas import RhythmEvent
-from beatfcn.model.full_event_codec import (EventRequest, EventState, EventVocabulary, FastEventState,
-                                            pattern_digits)
+from beatfcn.model.full_event_codec import (EventRequest, EventState, EventVocabulary, FastEventState)
 from beatfcn.model.full_event_generate import fast_supported, generate_batch
 from beatfcn.model.full_event_model import FullEventConfig, FullEventModel
 
@@ -60,9 +59,6 @@ def hold_heavy(model, end_bias=-2.):
     v = model.vocab
     bias = torch.zeros(v.size)
     bias[v.token('group', 0)] = end_bias
-    for code in range(1, 81):
-        if 2 in pattern_digits(code):
-            bias[v.token('mania', code)] += 2.5
     bias[v.token('kind', 1)] += 2.
     model.output.register_forward_hook(lambda m, a, out: out + bias.to(out.device))
     return model
@@ -148,8 +144,9 @@ class FastGrammarTests(unittest.TestCase):
                     events += self.walk(request, vocab, rng).events
         holds = [e for e in events if e.type == 'hold']
         self.assertGreater(len(events), 2000)
-        self.assertGreater(len([e for e in holds if e.lane >= 0]), 100)
-        self.assertGreater(len([e for e in holds if e.lane < 0]), 100)
+        # every mode now emits lane -1 (timing-only); both grammars must exercise holds
+        self.assertGreater(len(holds), 100)
+        self.assertTrue(all(e.lane == -1 for e in events))
 
 
 class StaticDecodeTests(unittest.TestCase):
@@ -210,13 +207,13 @@ class FastGenerationTests(unittest.TestCase):
     def test_greedy_tokens_identical_mania_phira_holds_carries(self):
         ref = self.assert_same(both(self.model, self.inputs, self.requests, 400))
         events = [e for row in ref for e in row['events']]
-        self.assertTrue(any(e['type'] == 'hold' and e['lane'] >= 0 for e in events), 'mania holds exercised')
+        self.assertTrue(any(e['type'] == 'hold' for e in events), 'holds exercised')
         self.assertTrue(any(e['type'] == 'hold' and e['lane'] == -1 for e in events), 'phira holds exercised')
         self.assertGreater(len({len(r['tokens']) for r in ref}), 1, 'rows finish at different steps')
 
     def test_per_row_sampling_identical(self):
         for kw in (dict(temperature=1.), dict(temperature=.7, top_p=.9),
-                   dict(temperature=1., field_temperature={'kind': .3, 'mania': .5, 'head_ms': 2.})):
+                   dict(temperature=1., field_temperature={'kind': .3, 'head_ms': 2.})):
             for seed in range(3):
                 gens = [torch.Generator().manual_seed(100 * seed + i) for i in range(4)]
                 self.assert_same(both(self.model, self.inputs, self.requests, 300, generator=gens, **kw))

@@ -169,8 +169,12 @@ def score_events(pred, truth, mode, tolerances_ms=(10, 20, 50)):
          'density_ratio':len(pred)/len(truth) if truth else None}
     # Timing alone would credit a tap on the wrong key, or a hold replacing a tap.
     # Phira deliberately scores type/multiplicity only when placement is outside P1's contract.
+    # A mania draft carries no lane decision: lane leaves every key, matching the
+    # timing-extraction contract (placement is the editor's job).
+    lane_blind = mode == 'mania_4k' and any(getattr(e.location, 'lane', -1) < 0 for e in pred)
+    out['lane_blind'] = lane_blind
     def note_key(event):
-        return (event.type, event.location.lane if mode == 'mania_4k' else None)
+        return (event.type, event.location.lane if mode == 'mania_4k' and not lane_blind else None)
     pred_notes, truth_notes = {}, {}
     for events, groups in ((pred, pred_notes), (truth, truth_notes)):
         for event in events:
@@ -182,8 +186,8 @@ def score_events(pred, truth, mode, tolerances_ms=(10, 20, 50)):
                       for key in pred_notes.keys() | truth_notes.keys())
         out[f'note_{ms}ms']={'tp':note_tp,'pred':len(pred),'true':len(truth),
                            'f1':2*note_tp/(len(pred)+len(truth)) if pred or truth else None}
-        h=hold_matches(pred,truth,ms*1000,match_lane=mode=='mania_4k')
-        joint=hold_matches(pred,truth,ms*1000,ms*1000,match_lane=mode=='mania_4k')
+        h=hold_matches(pred,truth,ms*1000,match_lane=mode=='mania_4k' and not lane_blind)
+        joint=hold_matches(pred,truth,ms*1000,ms*1000,match_lane=mode=='mania_4k' and not lane_blind)
         for label,counts in [('hold_head',h),('hold_joint',joint)]:
             errors=counts.pop('tail_errors_us')
             counts['f1']=2*counts['tp']/(counts['pred']+counts['true']) if counts['pred']+counts['true'] else None

@@ -612,8 +612,10 @@ def note_f1(draft, ref, mode, *, tol_us=50_000):
     total = len(draft)+len(ref)
     if not total:
         return dict(note_f1=None, onset_f1=None, tp_note=0, tp_onset=0, draft=0, reference=0)
-    keys = {(n[2], n[3]) for n in draft+ref}
-    tp = sum(_greedy_tp([n[0] for n in draft if (n[2], n[3]) == k], [n[0] for n in ref if (n[2], n[3]) == k], tol_us)
+    blind = mode == 'mania_4k' and any(n[3] < 0 for n in draft)  # lane-free draft: no lane decision to match on
+    key = (lambda n: (n[2], None)) if blind else (lambda n: (n[2], n[3]))
+    keys = {key(n) for n in draft+ref}
+    tp = sum(_greedy_tp([n[0] for n in draft if key(n) == k], [n[0] for n in ref if key(n) == k], tol_us)
              for k in keys)
     tpo = _greedy_tp([n[0] for n in draft], [n[0] for n in ref], tol_us)
     return dict(note_f1=2*tp/total, onset_f1=2*tpo/total, tp_note=tp, tp_onset=tpo, draft=len(draft), reference=len(ref))

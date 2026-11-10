@@ -221,55 +221,6 @@ def _encode_shared(model, inputs, memory_index):
             for k, v in memory.items()}
 
 
-def _pattern_rule(constraints):
-    """Validated decode-time mania pattern constraints (``None`` = off).
-
-    ``max_chord``: at most this many keys per onset group (hold heads count).
-    ``min_same_lane_ms``: a key pressed less than this long ago (within the current core)
-    cannot be pressed again (anti-jack). When a group would have no legal pattern left the
-    unconstrained support is kept and counted as ``relaxed`` (never a grammar dead end)."""
-    if not constraints:
-        return None
-    unknown = set(constraints) - {'max_chord', 'min_same_lane_ms'}
-    if unknown:
-        raise ValueError(f'Unknown pattern constraints {sorted(unknown)}')
-    rule = {}
-    if constraints.get('max_chord') is not None:
-        if not (int(constraints['max_chord']) == constraints['max_chord'] and 1 <= constraints['max_chord'] <= 4):
-            raise ValueError('max_chord must be an integer in [1, 4]')
-        rule['max_chord'] = int(constraints['max_chord'])
-    if constraints.get('min_same_lane_ms') is not None:
-        if not float(constraints['min_same_lane_ms']) > 0:
-            raise ValueError('min_same_lane_ms must be positive')
-        rule['min_same_lane_ms'] = float(constraints['min_same_lane_ms'])
-    return rule or None
-
-
-def _pattern_filter(state, rule, counters):
-    """Filtered legal 'mania' tokens under ``rule`` (same order as allowed_tokens), or None = unchanged."""
-    if rule is None or state.done or state.phase != 'mania':
-        return None
-    values = state.allowed_values()
-    recent = set()
-    if 'min_same_lane_ms' in rule:
-        limit = state.onset - int(round(rule['min_same_lane_ms'] * 1000))
-        recent = {e.lane for e in state.events if e.onset_us > limit and e.onset_us < state.onset}
-    cap = rule.get('max_chord', 4)
-    keep = []
-    for value in values:
-        digits = [(value // 3 ** lane) % 3 for lane in range(4)]
-        if sum(d > 0 for d in digits) > cap or any(d and lane in recent for lane, d in enumerate(digits)):
-            continue
-        keep.append(value)
-    if len(keep) == len(values):
-        return None
-    if not keep:
-        counters['relaxed'] = counters.get('relaxed', 0) + 1
-        return None
-    counters['filtered'] = counters.get('filtered', 0) + 1
-    return tuple(state.vocab.token('mania', v) for v in keep)
-
-
 def _sample_rows(scores, legal, active, temperature, top_p, generators):
     """Per-row ancestral draws; inactive rows take index 0 without RNG use.
     ``temperature`` may be a scalar or one value per row."""
@@ -288,7 +239,7 @@ def _sample_rows(scores, legal, active, temperature, top_p, generators):
 def generate_batch(model, inputs, requests, max_tokens, *, deadline=None,
                    temperature=None, top_p=None, generator=None,
                    guidance=None, unconditional_inputs=None, field_temperature=None,
-                   onset_fusion=None, fast=None, cuda_graph=None, stats=None, pattern_constraints=None,
+                   onset_fusion=None, fast=None, cuda_graph=None, stats=None,
                    memory_index=None, autocast=None, compile_decode=False, on_step=None):
     """Free generation over the legal grammar.
 
@@ -313,9 +264,6 @@ def generate_batch(model, inputs, requests, max_tokens, *, deadline=None,
     head_block/head_cell/head_ms logit gets ``w*log(p_onset+1e-4)`` (see
     ``_onset_bias``); recorded as ``decoding['onset_fusion']``.
 
-    ``pattern_constraints`` (default None = off): ``dict(max_chord=k, min_same_lane_ms=g)`` charter
-    playability limits on mania lane patterns (see ``_pattern_rule``); recorded with filtered /
-    relaxed group counts as ``decoding['pattern_constraints']``.
 
     ``memory_index`` (default None): ``inputs`` hold unique encoder rows and request row i uses
     row ``memory_index[i]`` (encoder dedupe across seeds of one core); on this path the memory is
@@ -337,9 +285,11 @@ def generate_batch(model, inputs, requests, max_tokens, *, deadline=None,
     if onset_fusion is not None:
         fusion = _onset_fusion_rule(onset_fusion)
         decoding['onset_fusion'] = dict(fusion)
-    patterns = _pattern_rule(pattern_constraints)
-    if patterns is not None:
-        decoding['pattern_constraints'] = dict(patterns, counts={})
+    if field_temperature and getattr(model, 'vocab', None) is not None:
+        from .full_event_codec import FIELDS
+        unknown = set(field_temperature) - set(FIELDS)
+        if unknown:
+            raise ValueError(f'field_temperature names unknown grammar fields: {sorted(unknown)}')
     row_generators = _row_generators(generator, len(requests))
     rng_mode = (None if temperature is None else 'per_row' if row_generators is not None
                 else 'shared_batch_generator' if generator is not None else 'global_torch_rng')
@@ -348,7 +298,7 @@ def generate_batch(model, inputs, requests, max_tokens, *, deadline=None,
     options = dict(deadline=deadline, temperature=temperature, top_p=top_p, generator=generator,
                    guidance=guidance, unconditional_inputs=unconditional_inputs,
                    field_temperature=field_temperature, decoding=decoding,
-                   row_generators=row_generators, rng_mode=rng_mode, fusion=fusion, patterns=patterns,
+                   row_generators=row_generators, rng_mode=rng_mode, fusion=fusion,
                    memory_index=memory_index)
     with _autocast_context(inputs['local'].device, autocast):
         if fast and fast_supported(model):
@@ -380,7 +330,7 @@ def fast_supported(model):
 
 def _generate_reference(model, inputs, requests, max_tokens, *, deadline, temperature, top_p, generator,
                         guidance, unconditional_inputs, field_temperature, decoding, row_generators, rng_mode,
-                        fusion=None, patterns=None, memory_index=None):
+                        fusion=None, memory_index=None):
     """Historical per-token loop (the equivalence reference for the fast path)."""
     states = [EventState(request, model.vocab) for request in requests]
     failures = [None] * len(states)
@@ -409,9 +359,7 @@ def _generate_reference(model, inputs, requests, max_tokens, *, deadline, temper
                 torch.tensor([q[1] for q in queries], device=device, dtype=torch.float32)[:, None],
                 torch.ones(len(states), 1, device=device, dtype=torch.bool), memory_u, cache=cache_u)[:, 0]
             logits = logits_u.float() + float(guidance) * (logits.float() - logits_u.float())
-        counts = decoding['pattern_constraints']['counts'] if patterns is not None else None
-        legal = [((_pattern_filter(state, patterns, counts) if patterns is not None else None) or state.allowed_tokens())
-                 if enabled else (BOS,) for state, enabled in zip(states, active)]
+        legal = [state.allowed_tokens() if enabled else (BOS,) for state, enabled in zip(states, active)]
         for row, support in enumerate(legal):
             if not len(support):
                 failures[row], active[row], legal[row] = 'grammar_dead_end', False, (BOS,)
@@ -716,7 +664,7 @@ def _support_spec(tokens):
 
 def _generate_fast(model, inputs, requests, max_tokens, *, deadline, temperature, top_p, generator,
                    guidance, unconditional_inputs, field_temperature, decoding, row_generators, rng_mode,
-                   cuda_graph=False, stats=None, fusion=None, patterns=None, memory_index=None, compile_decode=False,
+                   cuda_graph=False, stats=None, fusion=None, memory_index=None, compile_decode=False,
                    on_step=None):
     """Same decisions as ``_generate_reference`` with fixed-shape device work.
 
@@ -781,8 +729,6 @@ def _generate_fast(model, inputs, requests, max_tokens, *, deadline, temperature
         explicit = []
         for row, (state, enabled) in enumerate(zip(states, active)):
             if enabled:
-                filtered = (_pattern_filter(state, patterns, decoding['pattern_constraints']['counts'])
-                            if patterns is not None else None)
                 first, count, tokens = (_support_spec(filtered) if filtered is not None else
                                         state.allowed_spec() if fast_grammar
                                         else _support_spec(state.allowed_tokens()))
@@ -897,7 +843,7 @@ class ContinuousDecoder:
     """
 
     def __init__(self, model, seats, max_tokens, *, temperature=None, top_p=None, field_temperature=None,
-                 guidance=None, onset_fusion=None, pattern_constraints=None, cuda_graph=None, compile_decode=False,
+                 guidance=None, onset_fusion=None, cuda_graph=None, compile_decode=False,
                  autocast=None, on_step=None, stats=None, kind_bias=None):
         if model.training or not fast_supported(model) or seats < 1 or max_tokens < 1:
             raise ValueError('Continuous decoding needs an eval-mode attention decoder, seats >= 1 and max_tokens >= 1')
@@ -914,9 +860,6 @@ class ContinuousDecoder:
         self.fusion = None if onset_fusion is None else _onset_fusion_rule(onset_fusion)
         if self.fusion:
             self.decoding['onset_fusion'] = dict(self.fusion)
-        self.patterns = _pattern_rule(pattern_constraints)
-        if self.patterns is not None:
-            self.decoding['pattern_constraints'] = dict(self.patterns, counts={})
         self.rng_mode = None if temperature is None else 'per_row'
         self.device = next(model.parameters()).device
         self.use_graph = (CUDA_GRAPH_DEFAULT if cuda_graph is None else bool(cuda_graph)) and not compile_decode \
@@ -1071,7 +1014,7 @@ class ContinuousDecoder:
     def step(self):
         """One decode step over the table; returns the seats whose request just ended."""
         clock, timing = time.perf_counter, self.timing
-        states, failures, patterns = self.states, self.failures, self.patterns
+        states, failures = self.states, self.failures
         active = [state is not None for state in states]
         ints, times, firsts, counts = self.ints, self.times, self.firsts, self.counts
         with self.autocast_context:
@@ -1092,10 +1035,7 @@ class ContinuousDecoder:
             for row, (state, enabled) in enumerate(zip(states, active)):
                 first, count, tokens = BOS, 1, None
                 if enabled:
-                    filtered = (_pattern_filter(state, patterns, self.decoding['pattern_constraints']['counts'])
-                                if patterns is not None else None)
-                    first, count, tokens = (_support_spec(filtered) if filtered is not None else
-                                            state.allowed_spec() if self.fast_grammar
+                    first, count, tokens = (state.allowed_spec() if self.fast_grammar
                                             else _support_spec(state.allowed_tokens()))
                     if not count:
                         failures[row], active[row] = 'grammar_dead_end', False

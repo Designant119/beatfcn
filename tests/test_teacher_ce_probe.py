@@ -21,8 +21,8 @@ class ProbeTest(unittest.TestCase):
         for field in ('group', 'head_block', 'head_cell', 'head_ms', 'tails', 'joint'):
             self.assertGreater(result['field_ce']['all'][field], 0)
         self.assertIsNotNone(result['field_ce']['phira']['kind'])
-        self.assertIsNone(result['field_ce']['mania_4k']['kind'])
-        self.assertIsNotNone(result['field_ce']['mania_4k']['mania'])
+        self.assertIsNotNone(result['field_ce']['mania_4k']['kind'])
+        self.assertNotIn('mania', result['field_ce']['mania_4k'])
 
     def test_donors_are_not_needed_and_songs_without_features_are_skipped(self):
         first = self.protocol['windows'][0]['audio_sha256']

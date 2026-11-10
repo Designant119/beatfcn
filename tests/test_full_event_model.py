@@ -23,7 +23,9 @@ class EventCodecTests(unittest.TestCase):
             state = EventState(request)
             for token in tokens:
                 state.apply(token)
-            self.assertEqual(tuple(sorted(state.events)), tuple(sorted(events)))
+            # mania carries no lane decision: decoded events are the lane -1 view
+            expect = [RhythmEvent(e.onset_us, e.end_us, e.type, -1) for e in events]
+            self.assertEqual(tuple(sorted(state.events)), tuple(sorted(expect)))
             self.assertTrue(state.done)
 
     def test_copy_time_and_incoming_holds_preserve_exact_boundaries(self):
@@ -33,14 +35,14 @@ class EventCodecTests(unittest.TestCase):
                   RhythmEvent(2_000_000, 3_000_000, 'hold', 0)]
         self.assertTrue(encode_events(events, req))
         with self.assertRaises(ValueError):
-            encode_events([RhythmEvent(1_500_123, 1_500_123, 'tap', 0)], req)
-        with self.assertRaises(ValueError):
             encode_events([RhythmEvent(1_500_124, 1_500_124, 'tap', 1)], req)
 
-    def test_all_occupied_keys_do_not_admit_a_dead_end_group(self):
+    def test_occupied_keys_never_create_a_dead_end(self):
+        # lane-free grammar: incoming holds are timing context only, so a new group
+        # is always admissible (key occupancy is the editor placement pass).
         req = EventRequest('mania_4k', 1_000_000, 2_000_000, 5_000_000,
             known_carry=tuple(RhythmEvent(0, 3_000_000, 'hold', lane) for lane in range(4)))
-        self.assertEqual(EventState(req).allowed_values(), (0,))
+        self.assertEqual(EventState(req).allowed_values(), (0, 1))
 
     def test_type_permissions_and_capacity_never_silently_remove_targets(self):
         req = EventRequest('phira', 0, 8_000_000, 10_000_000, allowed_types=('tap',))
@@ -75,7 +77,7 @@ class EventModelTests(unittest.TestCase):
     def test_default_mainline_has_quarter_billion_trainable_parameters(self):
         with torch.device('meta'):
             model = FullEventModel()
-        self.assertEqual(sum(p.numel() for p in model.parameters()), 250681347)
+        self.assertEqual(sum(p.numel() for p in model.parameters()), 250556931)
         self.assertTrue(all(p.requires_grad for p in model.parameters()))
 
     def setUp(self):

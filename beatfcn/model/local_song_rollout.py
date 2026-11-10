@@ -33,7 +33,12 @@ def independent_legality(events, mode, duration_us):
         if (e.type == 'hold' and e.end_us <= e.onset_us) or (e.type != 'hold' and e.end_us != e.onset_us):
             issues.append(dict(code='duration', index=i))
     if mode == 'mania_4k':
-        issues += [dict(code=code, first=a, second=b) for code, a, b in lane_conflicts(canonical(events, mode))]
+        # mania drafts carry no lane decision to conflict on; placement is downstream's
+        # job. Anything else (human events) must be lane-consistent.
+        if all(e.lane == -1 for e in events):
+            pass
+        else:
+            issues += [dict(code=code, first=a, second=b) for code, a, b in lane_conflicts(canonical(events, mode))]
     return issues
 
 

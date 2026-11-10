@@ -351,39 +351,6 @@ class LayerDropTest(unittest.TestCase):
         self.assertTrue(grads['output.weight'])
 
 
-class AvoidSameLaneTest(unittest.TestCase):
-    def jack_rate(self, events):
-        lanes, times = {}, []
-        for e in events:
-            lanes.setdefault(e.onset_us, set()).add(e.lane)
-        times = sorted(lanes)
-        return np.mean([bool(lanes[a] & lanes[b]) for a, b in zip(times, times[1:])])
-
-    def source(self):
-        rng = np.random.default_rng(0)
-        lanes = rng.permutation(np.tile(np.arange(4), 8))
-        return [RhythmEvent(250_000*i, 250_000*i, 'tap', int(l)) for i, l in enumerate(lanes)]
-
-    def test_off_is_unchanged_and_on_is_legal_with_far_fewer_same_key_neighbours(self):
-        events = self.source()
-        plain = edit_events_to_multiplier(events, 0, 8_000_000, 2., 'mania_4k', 10_000_000, seed=5)
-        off = edit_events_to_multiplier(events, 0, 8_000_000, 2., 'mania_4k', 10_000_000, seed=5, avoid_same_lane=False)
-        self.assertEqual(plain, off)
-        on, _ = edit_events_to_multiplier(events, 0, 8_000_000, 2., 'mania_4k', 10_000_000, seed=5, avoid_same_lane=True)
-        self.assertEqual(len(on), len(plain[0]))
-        self.assertEqual(sorted(e.onset_us for e in on), sorted(e.onset_us for e in plain[0]))
-        self.assertLess(self.jack_rate(on), self.jack_rate(plain[0]))
-        self.assertLess(self.jack_rate(on), .1)
-        request = EventRequest('mania_4k', 0, 8_000_000, 10_000_000)
-        self.assertTrue(encode_events(on, request))
-
-    def test_flag_reaches_the_loader_settings_only_when_set(self):
-        from beatfcn.train.exposure_loader import plan_loader_settings
-        plan = dict(config=dict(mel_bins=0))
-        self.assertNotIn('avoid_same_lane', plan_loader_settings(plan))
-        self.assertTrue(plan_loader_settings(dict(plan, avoid_same_lane=True))['avoid_same_lane'])
-
-
 class AnalysisHelpersTest(unittest.TestCase):
     def test_same_key_stats_uses_the_report_d_definition(self):
         from scripts.analyze_type_mix import same_key_stats

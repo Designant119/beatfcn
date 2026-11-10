@@ -64,7 +64,7 @@ def main():
                     raise ValueError('Changed a tail/member/type/key/COPY token')
             old.apply(a)
             new.apply(b)
-            if old.events != new.events or old.last_onset != new.last_onset or old.lane_ends != new.lane_ends:
+            if old.events != new.events or old.last_onset != new.last_onset:
                 raise ValueError('Physical event or occupancy state differs')
         if not old.done or not new.done or sorted(new.events) != sorted(events):
             raise ValueError('Incomplete or non-fidelitous target reconstruction')

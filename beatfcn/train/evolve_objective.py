@@ -84,9 +84,9 @@ def evolve_loss(logits, sequence, settings, *, aux=None, token_weights=None, tea
 @torch.no_grad()
 def field_ce_sums(logits, sequence):
     """(sum, count) of CE per grammar field over valid decision tokens (forced tokens excluded), for logs."""
-    allowed, valid, fields = sequence['allowed'], sequence['valid'], sequence['fields']
+    allowed, valid, rows = sequence['allowed'], sequence['valid'], sequence['fields']
     legal = logits.float().masked_fill(~allowed, -1e9)
     ce = F.cross_entropy(legal.flatten(0, 1), sequence['targets'].flatten(), reduction='none').view_as(valid)
     keep = valid & (allowed.sum(-1) > 1)
-    return (torch.bincount(fields[keep], weights=ce[keep], minlength=len(FIELDS)),
-            torch.bincount(fields[keep], minlength=len(FIELDS)))
+    return (torch.bincount(rows[keep], weights=ce[keep], minlength=len(FIELDS)),
+            torch.bincount(rows[keep], minlength=len(FIELDS)))

@@ -2,7 +2,7 @@ import unittest
 
 from beatfcn.model.event_canvas import RhythmEvent
 from beatfcn.train.counterfactual_density import (edit_events_to_density,
-    edit_events_to_multiplier, real_density_curve, sanitize_mania)
+    edit_events_to_multiplier, real_density_curve)
 
 
 class CounterfactualDensityTest(unittest.TestCase):
@@ -15,15 +15,11 @@ class CounterfactualDensityTest(unittest.TestCase):
         self.assertEqual(len(thick), 4)
         self.assertEqual(actual, [4.0, 4.0])
 
-    def test_mania_added_taps_do_not_share_lane_and_onset(self):
+    def test_mania_added_taps_carry_no_lane(self):
         events = [RhythmEvent(0, 0, 'tap', 0)]
         thick, _ = edit_events_to_density(events, 0, 1_000_000, 8., 'mania_4k', 8_000_000)
-        seen = set()
-        for event in thick:
-            self.assertIn(event.lane, range(4))
-            key = (event.onset_us, event.lane)
-            self.assertNotIn(key, seen)
-            seen.add(key)
+        self.assertGreater(len(thick), 1)
+        self.assertTrue(all(event.lane == -1 for event in thick))
 
     def test_holds_are_removed_whole(self):
         events = [RhythmEvent(0, 300_000, 'hold', -1), RhythmEvent(100_000, 100_000, 'tap', -1)]
@@ -50,25 +46,13 @@ class CounterfactualDensityTest(unittest.TestCase):
         thin, _ = edit_events_to_multiplier(events, 0, 500_000, 0.5, 'mania_4k',
                                             8_000_000, seed=1)
         self.assertLess(len(thin), len(events))
-        self.assertTrue({(event.onset_us, event.lane) for event in thin}
-                        <= {(event.onset_us, event.lane) for event in events})
+        self.assertTrue({event.onset_us for event in thin}
+                        <= {event.onset_us for event in events})
 
     def test_real_density_curve_reports_human_counts(self):
         events = [RhythmEvent(0, 0, 'tap', 0), RhythmEvent(100_000, 100_000, 'tap', 1)]
         curve = real_density_curve(events, 0, 1_000_000)
         self.assertEqual([round(cell['density'], 1) for cell in curve], [4.0, 0.0])
-
-    def test_sanitizer_clips_hold_behind_a_later_note(self):
-        events = [RhythmEvent(100_000, 400_000, 'hold', 1),
-                  RhythmEvent(120_000, 120_000, 'tap', 1)]
-        cleaned = sanitize_mania(events, 'mania_4k')
-        hold = next(event for event in cleaned if event.type == 'hold')
-        tap = next(event for event in cleaned if event.type == 'tap')
-        self.assertLess(hold.end_us, tap.onset_us)
-
-    def test_sanitizer_drops_two_notes_on_one_lane_and_onset(self):
-        events = [RhythmEvent(0, 0, 'tap', 2), RhythmEvent(0, 0, 'flick', 2)]
-        self.assertEqual(len(sanitize_mania(events, 'mania_4k')), 1)
 
     def test_relative_hold_copy_preserves_original_and_is_encodable(self):
         from beatfcn.model.full_event_codec import EventRequest, encode_events, teacher_sequence
@@ -76,7 +60,8 @@ class CounterfactualDensityTest(unittest.TestCase):
                      RhythmEvent(450000, 450000, 'tap', 2)]
         thick, _ = edit_events_to_multiplier(originals, 0, 500000, 2.,
                                               'mania_4k', 1000000, seed=0)
-        self.assertTrue(set(originals) <= set(thick))
+        stripped = {RhythmEvent(e.onset_us, e.end_us, e.type, -1) for e in originals}
+        self.assertTrue(stripped <= set(thick))  # mania targets are the lane -1 view
         self.assertGreater(len(thick), len(originals))
         holds = [e for e in thick if e.type == 'hold']
         self.assertTrue(all(e.end_us-e.onset_us == 100000 for e in holds))
@@ -87,7 +72,7 @@ class CounterfactualDensityTest(unittest.TestCase):
         original = RhythmEvent(200000, 400000, 'hold', 0)
         thick, actual = edit_events_to_multiplier([original], 0, 500000, 2.,
                                                    'mania_4k', 1000000, seed=0)
-        self.assertEqual(thick, [original])
+        self.assertEqual(thick, [RhythmEvent(original.onset_us, original.end_us, original.type, -1)])
         self.assertAlmostEqual(actual[0], 2.0)
 
     def test_upsampling_subdivides_without_short_gaps(self):
@@ -109,7 +94,8 @@ class CounterfactualDensityTest(unittest.TestCase):
         originals += [RhythmEvent(600000, 600000, 'tap', lane) for lane in (1, 2, 3)]
         thick, _ = edit_events_to_multiplier(originals, 0, 1000000, 2.,
                                               'mania_4k', 1000000, seed=0)
-        self.assertTrue(set(originals) <= set(thick))
+        stripped = {RhythmEvent(e.onset_us, e.end_us, e.type, -1) for e in originals}
+        self.assertTrue(stripped <= set(thick))
         encode_events(thick, EventRequest('mania_4k', 0, 1000000, 1000000))
 
 

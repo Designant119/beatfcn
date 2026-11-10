@@ -18,9 +18,11 @@ def event_f1(predicted, target, *, tolerance_us=20_000):
     if tolerance_us < 0:
         raise ValueError('Tolerance must be nonnegative')
     edges = [[j for j, t in enumerate(target)
-              if kind == t[2] and lane == t[3] and abs(onset-t[0]) <= tolerance_us
+              if kind == t[2] and (lane == t[3] if lane >= 0 else True) and abs(onset-t[0]) <= tolerance_us
               and (kind != 'hold' or abs(end-t[1]) <= tolerance_us)]
              for onset, end, kind, lane in predicted]
+    # lane -1 in `predicted` = a mania draft: no lane decision was made, so any
+    # reference lane matches (one-to-one matching still bounds the pairing).
     owners = {}
     def augment(i, visited):
         for j in edges[i]:
