@@ -32,7 +32,7 @@ class FullEventConfig:
     taps: int = 3
     bands: int = 8
     band_slots: int = 2
-    reference_dim: int = 16
+    reference_dim: int = 12
     control_dim: int = 6
     controls: int = 8
     dropout: float = .1

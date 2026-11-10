@@ -77,7 +77,7 @@ class EventModelTests(unittest.TestCase):
     def test_default_mainline_has_quarter_billion_trainable_parameters(self):
         with torch.device('meta'):
             model = FullEventModel()
-        self.assertEqual(sum(p.numel() for p in model.parameters()), 250556931)
+        self.assertEqual(sum(p.numel() for p in model.parameters()), 250553091)
         self.assertTrue(all(p.requires_grad for p in model.parameters()))
 
     def setUp(self):

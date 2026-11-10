@@ -34,7 +34,7 @@ from . import controls as C
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / 'design' / 'package_2026-10-22' / 'request.schema.json'
 PHIRA_ONLY = ('flick_ratio', 'drag_ratio')
-MANIA_ONLY = ('jack_ratio',)
+MANIA_ONLY = ()
 BAND_FIELDS = tuple(C.BAND_EDGES)
 
 

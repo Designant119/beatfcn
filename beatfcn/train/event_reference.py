@@ -13,11 +13,10 @@ from beatfcn.events.canonical import Event, LaneLoc, LineLoc, MODE_TYPES, TYPES
 
 TIME_SCALE_US = 1_200_000_000
 REFERENCE_COLUMNS = (
-    'start_relative', 'end_relative', 'tap', 'hold', 'flick', 'drag',
-    'lane_0', 'lane_1', 'lane_2', 'lane_3', 'event',
+    'start_relative', 'end_relative', 'tap', 'hold', 'flick', 'drag', 'event',
     'human_input', 'model_history', 'human_alternative', 'known_region', 'unknown_region',
 )
-SOURCE_COLUMN = {'human_input': 11, 'model_history': 12, 'human_alternative': 13}
+SOURCE_COLUMN = {'human_input': 7, 'model_history': 8, 'human_alternative': 9}
 
 
 @dataclass(frozen=True)
@@ -77,8 +76,6 @@ def encode_reference(*, mode, audio_sha256, duration_us, origin_us,
             row[SOURCE_COLUMN[source.role]] = 1
         if event is not None:
             row[2+TYPES.index(event.type)] = 1
-            if mode == 'mania_4k':
-                row[6+event.location.lane] = 1
         rows.append(row)
         times.append((start-origin_us)/1_000_000)
         provenance.append(dict(source_id=source.source_id if source else None,

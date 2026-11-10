@@ -18,7 +18,6 @@ REQUEST_BANDS = {
     'hold_head_ratio': [[0., .02], [.2, .3], [.5, .6]],
     'hold_occupancy_ratio': [[0., .02], [.3, .4], [.8, 1.]],
     'chord_ratio': [[0., .02], [.2, .3], [.5, .6]],
-    'jack_ratio': [[0., .02], [.3, .4], [.8, 1.]],
     'flick_ratio': [[0., .02], [.2, .3], [.5, .6]],
     'drag_ratio': [[0., .02], [.2, .3], [.5, .6]],
 }
@@ -87,7 +86,7 @@ def feasible_witness(mode, field, level):
         duration = (0, 2800000, 7200000)[level]
         add(250000, 'hold' if duration else 'tap', 250000 + duration)
         add(7700000, lane=1)
-    elif field == 'jack_ratio':
+    elif False:
         lane = 0
         for i in range(21):
             if i > (0, 7, 18)[level]:

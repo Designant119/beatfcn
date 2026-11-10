@@ -2756,25 +2756,6 @@ def song_metadata(raw_root, song):
     return song['song_id'], 'unknown'
 
 
-def verify_osu_on_disk(path, events):
-    """Re-read written .osu bytes with the repo parser; the rhythm must survive exactly (ms grid)."""
-    from beatfcn.events.chart_export import osu_mania_events
-    from beatfcn.events.osu_mania import parse_osu
-    parsed = parse_osu(Path(path).read_bytes(), Path(path).name)
-    want = sorted((e.onset_us, e.end_us, e.type, e.location.lane) for e in osu_mania_events(events)[0])
-    got = sorted((e.onset_us, e.end_us, e.type, e.location.lane) for e in parsed.events)
-    return dict(parsed=True, quarantined=bool(parsed.quarantined), notes=len(got), exact=got == want and not parsed.quarantined)
-
-
-def write_osz(path, files):
-    """osu! beatmap archive (a zip of the beatmap folder); double-click imports into osu!."""
-    import zipfile
-    with zipfile.ZipFile(path, 'x', zipfile.ZIP_DEFLATED) as z:
-        for f in files:
-            z.write(f, Path(f).name)
-    return path
-
-
 def playback_shift(args, chart_id):
     """Model clock -> game playback clock for a song: the constant model-clock shift of its human reference
     chart (target receipt model_shift_us = offset decision + codec constant; osu mostly +14 ms). 0 if unknown."""
@@ -2792,8 +2773,6 @@ def export_song(folder, stem, song, events, audio, *, title, artist, version, cr
     Drafts live on the MODEL clock (tape targets = raw chart + model_shift_us); editors play the audio on the
     raw chart clock, so every time is written as t - ``clock_shift_us`` (notes that would fall before 0 are
     dropped and counted). ``timing_points`` / bookmarks / preview must already be on the playback clock."""
-    from beatfcn.events.chart_export import write_osu_mania
-    from beatfcn.events.osu_mania import ExportError
     folder.mkdir(parents=True, exist_ok=True)
     receipt = dict(audio={k: v for k, v in audio.items() if k not in ('data', 'path')})
     shift = int(clock_shift_us or 0)
@@ -2806,13 +2785,8 @@ def export_song(folder, stem, song, events, audio, *, title, artist, version, cr
         write_audio(audio, folder/audio_name)
     try:
         if song['mode'] == 'mania_4k':
-            osu = folder/f'{stem}.osu'
-            receipt['chart'] = write_osu_mania(osu, events, title=title, artist=artist, version=version, creator=creator,
-                audio_filename=audio_name or f"{song['audio_sha256']}.mp3", timing_points=timing_points,
-                bookmarks_ms=bookmarks_ms, preview_time_ms=preview_time_ms)
-            receipt['disk_roundtrip'] = verify_osu_on_disk(osu, events)
-            if audio['ok']:
-                receipt['osz'] = str(write_osz(folder.parent/f'{stem}.osz', [osu, folder/audio_name]))
+            receipt['chart'] = dict(skipped='mania drafts are lane-free timing extraction; no .osu '
+                                            '(use the draft events directly)')
         elif audio['ok']:
             from beatfcn.events.rhythm_preview import write_phira_preview
             receipt['chart'] = write_phira_preview(folder.parent/f'{stem}.zip', events, folder/audio_name,

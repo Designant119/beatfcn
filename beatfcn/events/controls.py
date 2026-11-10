@@ -7,7 +7,6 @@ Scope is the union E of the request's editable regions, computed AFTER every aug
 - hold_occupancy_ratio: |union of hold occupancies [onset, end) intersect E| / |E|, holds starting
   outside E included.
 - chord_ratio: exact-onset groups in E with >= 2 heads / groups in E.
-- jack_ratio (mania only): consecutive onset groups in E sharing a lane / transitions.
 - flick_ratio, drag_ratio (Phira only): heads of that type / heads in E.
 Values are emitted only as fixed bins [lo, hi) (last ratio bin closed at 1.0) so an exact local count
 is never a conditioning input. A value outside the bin table, or undefined (empty E, no heads), is
@@ -26,11 +25,11 @@ BAND_EDGES = {
     'density_notes_per_second': (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0, 24.0, 32.0, 48.0, 64.0),
     'peak_notes_per_second': (0.0, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0, 24.0, 32.0, 48.0, 64.0, 96.0),
     'hold_head_ratio': RATIO_EDGES, 'hold_occupancy_ratio': RATIO_EDGES, 'chord_ratio': RATIO_EDGES,
-    'jack_ratio': RATIO_EDGES, 'flick_ratio': RATIO_EDGES, 'drag_ratio': RATIO_EDGES,
+    'flick_ratio': RATIO_EDGES, 'drag_ratio': RATIO_EDGES,
 }
 MODE_FIELDS = {
     'mania_4k': ('density_notes_per_second', 'peak_notes_per_second', 'hold_head_ratio', 'hold_occupancy_ratio',
-                 'chord_ratio', 'jack_ratio'),
+                 'chord_ratio'),
     'phira': ('density_notes_per_second', 'peak_notes_per_second', 'hold_head_ratio', 'hold_occupancy_ratio',
               'chord_ratio', 'flick_ratio', 'drag_ratio'),
 }
@@ -123,11 +122,6 @@ def raw_controls(mode: str, events, editable: Iterable[Interval]) -> dict:
     gs = [groups[k] for k in sorted(groups)]
     if gs:
         out['chord_ratio'] = sum(len(g) >= 2 for g in gs) / len(gs)
-    if mode == 'mania_4k' and len(gs) >= 2:
-        # mania drafts carry no lane decision: -1 keys never
-        # intersect, so jack_ratio reads as 0 (placement is downstream's job).
-        lanes = [{getattr(h.location, 'lane', -1) for h in g} - {-1} for g in gs]
-        out['jack_ratio'] = sum(bool(a & b) for a, b in zip(lanes, lanes[1:])) / (len(gs) - 1)
     if mode == 'phira' and heads:
         out['flick_ratio'] = sum(h.type == 'flick' for h in heads) / len(heads)
         out['drag_ratio'] = sum(h.type == 'drag' for h in heads) / len(heads)

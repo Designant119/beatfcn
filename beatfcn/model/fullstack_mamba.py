@@ -26,7 +26,7 @@ class FullStackMambaConfig:
     bands: int = 8
     band_slots: int = 2
     tap_dim: int = 1024
-    reference_dim: int = 16
+    reference_dim: int = 12
     controls: int = 8
     control_dim: int = 6
     mel_bins: int = 128

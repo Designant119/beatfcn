@@ -30,7 +30,7 @@ LEVEL_CURVE_TAG = 909
 
 
 SONG_STYLE_TAG = 0x53545945
-SONG_STYLE_FIELDS = ('hold_head_ratio', 'hold_occupancy_ratio', 'chord_ratio', 'jack_ratio', 'flick_ratio', 'drag_ratio')
+SONG_STYLE_FIELDS = ('hold_head_ratio', 'hold_occupancy_ratio', 'chord_ratio', 'flick_ratio', 'drag_ratio')
 
 
 def normalize_level_curve(settings):
