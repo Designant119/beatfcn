@@ -4,6 +4,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 
+try:
+    import modal
+except ModuleNotFoundError:
+    raise unittest.SkipTest('modal is not installed in this environment')
+
 from modal._functions import _Invocation
 from modal.exception import FunctionTimeoutError, TimeoutError as ModalTimeoutError
 from scripts.hn2_result_poll import wait_existing_call
@@ -83,3 +88,4 @@ class PollTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

@@ -1,6 +1,7 @@
 import copy
 import unittest
 
+from beatfcn.events.controls import MODE_FIELDS
 from beatfcn.events.requests import build_request
 from beatfcn.model import features as F
 from beatfcn.train.condition_audit import inspect_sample, summarize
@@ -33,7 +34,7 @@ class ConditionAuditTests(unittest.TestCase):
             self.assertEqual(r['fields']['density_notes_per_second']['local_band_differs'], False)
             cell, = summarize([r]).values()
             self.assertEqual(cell['fields']['hold_head_ratio']['missing'], 1)
-            self.assertNotIn('jack_ratio' if chart.mode == 'phira' else 'drag_ratio', r['fields'])
+            self.assertEqual(set(r['fields']), set(MODE_FIELDS[chart.mode]))  # 字段按模式裁剪
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 """Lazy event supervision over admitted songs, with explicit reference permission."""
+from dataclasses import asdict
 from functools import lru_cache
 import json
 from pathlib import Path
@@ -7,7 +8,7 @@ import numpy as np
 
 from beatfcn.events.canonical import TYPES
 from beatfcn.model.event_canvas import RhythmEvent
-from beatfcn.model.full_event_codec import EventRequest, teacher_sequence
+from beatfcn.model.full_event_codec import EventRequest, EventVocabulary, teacher_sequence
 from beatfcn.train.event_reference import encode_reference
 from beatfcn.train.local_features import LocalFeatureStore
 from beatfcn.train.local_panel import collate
@@ -44,6 +45,10 @@ class LocalRequestPanel(WorkerCacheMixin):
         self.manifest = json.loads((self.root/tape).read_text())
         if not self.manifest['complete'] or self.manifest['failures']:
             raise ValueError('Request tape is incomplete or failed')
+        recorded = self.manifest.get('vocabulary')
+        if recorded is not None and recorded != asdict(EventVocabulary()):
+            raise ValueError('Request tape was prepared with a different token vocabulary; '
+                             'rebuild it with the current codec')
         self.features = LocalFeatureStore(root, features, allow_partial=allow_partial_features)
         self.charts = self.manifest['charts']
         self.records = []
@@ -72,6 +77,11 @@ class LocalRequestPanel(WorkerCacheMixin):
         values = tokens[row['token_start']:row['token_stop']].tolist()
         if len(values) != row['tokens']:
             raise ValueError('Prepared token slice changed')
+        size = EventVocabulary().size
+        if values and (min(values) < 0 or max(values) >= size):
+            raise ValueError(f'Prepared token stream predates the current vocabulary '
+                             f'(token up to {max(values)}, vocabulary size {size}); '
+                             'rebuild the request tape')
         return teacher_sequence(values, event_request(row['request']))
 
     def targets(self, index):

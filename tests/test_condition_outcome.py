@@ -66,10 +66,10 @@ class ConditionOutcomeTests(unittest.TestCase):
             self.assertEqual(result['reward'], -2.)
             self.assertFalse(result['all_requested_satisfied'])
 
-    def test_mania_jack_and_inapplicable_fields(self):
+    def test_mania_satisfied_band_and_removed_field(self):
         rows = [event(0, lane=2), event(1_000_000, lane=2)]
         result = score_condition_outcome('mania_4k', rows, (0, 8_000_000),
-            {'jack_ratio': [.8, 1.]}, complete=True, legality_errors=[])
+            {'hold_head_ratio': [0., .02]}, complete=True, legality_errors=[])
         self.assertEqual(result['reward'], 0.)
         with self.assertRaisesRegex(ValueError, 'inapplicable'):
             self.score([], {'jack_ratio': [0., .02]})

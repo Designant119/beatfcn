@@ -23,12 +23,12 @@ class ControlLabelTests(unittest.TestCase):
         scope = (1_000_000, 9_000_000)
         unknown = encode_controls('phira', {}, scope, origin_us=scope[0])
         zero = encode_controls('phira', {'hold_head_ratio': [0., .02]}, scope, origin_us=scope[0])
-        hold, jack = map(CONTROL_FIELDS.index, ['hold_head_ratio', 'jack_ratio'])
+        hold, chord = map(CONTROL_FIELDS.index, ['hold_head_ratio', 'chord_ratio'])
         self.assertEqual(zero[hold, 0], 0.)
         self.assertEqual(zero[hold, 2], 1.)
         self.assertEqual(unknown[hold, 2], 0.)
         self.assertEqual(unknown[hold, 3], 1.)
-        self.assertTrue((zero[jack] == 0).all())
+        self.assertTrue((zero[chord] == 0).all())
         self.assertAlmostEqual(float(zero[hold, 5]), 8/1200)
 
     def test_incoming_hold_and_out_of_scope_heads(self):

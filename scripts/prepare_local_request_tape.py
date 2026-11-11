@@ -11,7 +11,7 @@ import numpy as np
 
 from beatfcn.events.canonical import build_model_view, TYPES
 from beatfcn.model.event_canvas import RhythmEvent
-from beatfcn.model.full_event_codec import EventRequest, encode_events
+from beatfcn.model.full_event_codec import EventRequest, EventVocabulary, encode_events
 from beatfcn.train.data import chart_from_canon, model_shift_us
 from beatfcn.train.event_conditions import encode_controls, training_labels
 from beatfcn.train.local_canonical_audit import rhythm_fingerprint
@@ -71,7 +71,9 @@ def run(plan_path):
         'beatfcn/model/full_event_codec.py', 'beatfcn/events/canonical.py',
         'beatfcn/train/event_conditions.py', 'beatfcn/events/controls.py', 'beatfcn/train/data.py']}
     result = json.loads(output.read_text()) if output.exists() else dict(id=plan['id'],
-        plan_sha256=sha(plan_path), code_sha256=code, charts=[], failures=[], attempts=[], complete=False,
+        plan_sha256=sha(plan_path), code_sha256=code,
+        vocabulary=asdict(EventVocabulary()),  # tape 词表指纹：panel 加载时不一致即拒绝
+        charts=[], failures=[], attempts=[], complete=False,
         training_ready=False, optimizer_updates=0, cloud_compute_calls=0)
     if result['plan_sha256'] != sha(plan_path) or result['code_sha256'] != code or result['failures']:
         raise ValueError('Request identity changed or unresolved failure remains')

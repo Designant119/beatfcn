@@ -8,7 +8,7 @@ import unittest
 import torch
 
 from beatfcn.train.tape import MetadataTape, policy_digest
-from scripts.condition_cohort_probe import ResidentCohorts
+from beatfcn.train.cohorts import ResidentCohorts
 from beatfcn.train.pinned import PinnedRing
 
 

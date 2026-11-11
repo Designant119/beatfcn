@@ -17,7 +17,7 @@ def decide(control,candidate,gate):
     if gate['both_modes_have_passed_field'] and modes!={'mania_4k','phira'}:reasons.append('control gains do not cover both modes')
     kinds={field.split(':')[1] for field in fields}
     types={'hold_head_ratio','flick_ratio','drag_ratio'}
-    structures={'density_notes_per_second','peak_notes_per_second','hold_occupancy_ratio','chord_ratio','jack_ratio'}
+    structures={'density_notes_per_second','peak_notes_per_second','hold_occupancy_ratio','chord_ratio'}
     if gate['require_type_and_structure_controls'] and not (kinds & types and kinds & structures):
         reasons.append('control gains must include type and structure')
     result.update(short_window_gate_passed=not reasons,passed_control_fields=fields,product_promotion=False,

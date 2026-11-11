@@ -418,10 +418,15 @@ def evaluate_songs(model, corpus, rows, n_songs=20, seed=20261023, device='cpu',
 
     Failed/illegal songs stay in the denominator. Every result retains identity, seed and raw counts.
     """
-    import hashlib
+    import hashlib, json
     from ..events.requests import build_request, KINDS
-    from ..train.audit import fingerprint
     from .benchmark import audio_features, capability_metrics, scorecard, metric_source_sha256
+
+    def fingerprint(rows):
+        body = '\n'.join(json.dumps(r, sort_keys=True, separators=(',', ':'))
+                         for r in sorted(rows, key=lambda r: r['chart_id']))
+        return hashlib.sha256(body.encode()).hexdigest()
+
     if n_songs <= 0 or not rows:
         raise ValueError('whole-song evaluation needs positive n_songs and nonempty held-out rows')
     if per_song_timeout_s is not None and per_song_timeout_s <= 0:

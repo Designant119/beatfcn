@@ -1,3 +1,10 @@
+import unittest
+
+try:
+    import modal
+except ModuleNotFoundError:
+    raise unittest.SkipTest('modal is not installed in this environment')
+
 from decimal import Decimal
 import hashlib
 import json

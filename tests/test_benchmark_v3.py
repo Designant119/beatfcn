@@ -440,7 +440,10 @@ class EndToEnd(unittest.TestCase):
         for mode, m in rep['modes'].items():
             self.assertEqual(m['axes']['W_nearest_exact']['call'], 'A')
             self.assertEqual(m['objective_calls']['W_nearest_exact'], 'A')
-        self.assertIn(rep['verdict'], ('A dominates B', 'no dominance (trade-off)'))
+        # The admission gate rewrites `verdict` when an objective axis is unmeasured; the raw call stays in objective_verdict.
+        self.assertIn(rep['objective_verdict'], ('A dominates B', 'no dominance (trade-off)'))
+        self.assertFalse(rep['promotion_allowed'])
+        self.assertIn('M', ' '.join(rep['promotion_blockers']))
         self.assertIn('VERDICT', B.compare_text(rep))
 
     def test_compare_self_ties_and_goes_to_cheaper(self):
@@ -449,9 +452,10 @@ class EndToEnd(unittest.TestCase):
         self.assertIn('tie', tie['verdict'])
         cheap = B.compare_docs(self.good, self.good, floor, cost_a=1., cost_b=1.02, samples=30)
         self.assertEqual(cheap['cost']['call'], 'tie')  # under 5%
-        self.assertIn('cheaper (A)', cheap['verdict'])
+        self.assertIn('tie', cheap['objective_verdict'])  # costs that close are not a reason to switch
+        self.assertEqual(cheap['cost']['a'], 1.)
         dom = B.compare_docs(self.good, self.good, floor, cost_a=2., cost_b=1., samples=30)
-        self.assertEqual(dom['verdict'], 'B dominates A')
+        self.assertEqual(dom['objective_verdict'], 'B dominates A')
 
     def test_compare_refuses_different_panels(self):
         floor = B.Floor(self.floor_path)

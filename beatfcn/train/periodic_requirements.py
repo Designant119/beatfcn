@@ -43,7 +43,7 @@ def evaluate_training_checkpoint(model,panel,plan,report,*,root,device,remaining
     directory=root/settings['history_dir'];directory.mkdir(parents=True,exist_ok=True)
     output=directory/f'opt-{report["optimizer_updates"]:06d}-{report["checkpoint_sha256"][:12]}-{report["plan_sha256"][:8]}.json'
     print(json.dumps(dict(phase='requirement_eval_start',**checkpoint,max_wall_s=budget)),flush=True)
-    from beatfcn.train.compiled_training import preparation_deadline
+    from beatfcn.train.deadlines import preparation_deadline
     remaining_budget=budget-(time.monotonic()-started)
     with preparation_deadline(max(1.,remaining_budget),label='Periodic requirement evaluation'):
         result=run_requirement_screen(model,panel,protocol,checkpoint=checkpoint,
@@ -280,7 +280,7 @@ def periodic_benchmark_step(model, panel, plan, report, *, root, device, ema=Non
     max_wall = float(settings.get('max_wall_s', 300.))
     guard = nullcontext()
     if threading.current_thread() is threading.main_thread():
-        from beatfcn.train.compiled_training import preparation_deadline
+        from beatfcn.train.deadlines import preparation_deadline
         guard = preparation_deadline(max_wall+float(settings.get('hard_timeout_grace_s', 60.)),
                                      label='Periodic benchmark v2')
     try:

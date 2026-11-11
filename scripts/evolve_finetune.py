@@ -302,7 +302,10 @@ def finetune(spec, *, updates, deadline_unix=None, resume=False, device='cuda', 
             raise ValueError('Fine-tune supports bf16 or fp32 only')
         amp = (lambda: torch.autocast('cuda', dtype=amp_dtype)) if amp_dtype is not None and device == 'cuda' else nullcontext
         if compile_regions and device == 'cuda' and recipe.get('compile_loss'):
-            from beatfcn.train.compiled_training import enable_regional_compile
+            try:
+                from beatfcn.train.compiled_training import enable_regional_compile
+            except ImportError:
+                raise SystemExit('compile_loss needs beatfcn/train/compiled_training.py (retired with the P1 line); drop it from the plan')
             progress.update(phase='compile')
             options = recipe['compile_loss'].get('options')
             enable_regional_compile(model, options=options)

@@ -6,8 +6,8 @@ from beatfcn.model.full_event_codec import EventRequest
 
 class StyleRequestTests(unittest.TestCase):
     def test_parse_and_provider_and_response(self):
-        bands = W.parse_control_bands(['hold_occupancy_ratio=0.6,0.8', 'jack_ratio=0.0,0.02'])
-        self.assertEqual(bands, {'hold_occupancy_ratio': [0.6, 0.8], 'jack_ratio': [0.0, 0.02]})
+        bands = W.parse_control_bands(['hold_occupancy_ratio=0.6,0.8', 'chord_ratio=0.0,0.02'])
+        self.assertEqual(bands, {'hold_occupancy_ratio': [0.6, 0.8], 'chord_ratio': [0.0, 0.02]})
         with self.assertRaises(SystemExit):
             W.parse_control_bands(['hold_occupancy_ratio=0.61,0.8'])
         prov = W.style_condition_provider(bands)
@@ -20,8 +20,9 @@ class StyleRequestTests(unittest.TestCase):
         r = W.style_response(drafts, panel, bands)
         m = r['summary']['mania_4k/hold_occupancy_ratio']
         self.assertAlmostEqual(m['mean'], 0.5); self.assertEqual(m['in_band'], 0.0)
-        self.assertEqual(r['summary']['mania_4k/jack_ratio']['mean'], 1.0)
-        self.assertNotIn('phira/jack_ratio', r['summary'])          # no jack field for Phira
+        chord = r['summary']['mania_4k/chord_ratio']
+        self.assertEqual(chord['mean'], 0.0); self.assertEqual(chord['in_band'], 1.0)
+        self.assertNotIn('mania_4k/flick_ratio', r['summary'])      # flick/drag are Phira-only
         self.assertIn('phira/hold_occupancy_ratio', r['summary'])
 
 if __name__ == '__main__':

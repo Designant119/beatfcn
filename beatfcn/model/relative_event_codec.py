@@ -59,7 +59,9 @@ def encode_events(events, request, vocab=None):
         else:
             state.apply(absolute[i])
             i += 1
-    if not state.done or sorted(state.events) != sorted(events) or len(state.tokens) != len(absolute):
+    shape = lambda e: (e.onset_us, e.end_us, e.type)
+    if (not state.done or sorted(shape(e) for e in state.events) != sorted(shape(e) for e in events)
+            or len(state.tokens) != len(absolute)):
         raise AssertionError('Relative coordinate conversion changed the event multiset or token count')
     return tuple(state.tokens)
 

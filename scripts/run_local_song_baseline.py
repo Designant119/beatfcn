@@ -522,7 +522,7 @@ def run(plan_path, resume=False, yield_after=None):
             save('initialized_from_verified_driver_checkpoint')
         if plan.get('learning_eval') and not plan.get('requirement_eval'):
             from beatfcn.train.learning_evaluation import run_checkpoint_screen
-            from beatfcn.train.compiled_training import preparation_deadline
+            from beatfcn.train.deadlines import preparation_deadline
             with preparation_deadline(plan['learning_eval']['max_wall_s']+30, label='Held-out evaluation'):
                 report['learning_evaluation'] = run_checkpoint_screen(model, panel, plan, root=ROOT, device=device)
             save('learning_evaluation_ready')
@@ -574,7 +574,10 @@ def run(plan_path, resume=False, yield_after=None):
         if plan.get('compile_loss'):
             if device != 'cuda' or graph_step is not None or plan.get('compile'):
                 raise ValueError('Compiled loss requires CUDA without another graph/compile wrapper')
-            from beatfcn.train.compiled_training import prepare_compiled_loss
+            try:
+                from beatfcn.train.compiled_training import prepare_compiled_loss
+            except ModuleNotFoundError:
+                raise SystemExit('compile_loss needs beatfcn/train/compiled_training.py (retired with the P1 line); drop it from the plan')
             if loader is None:
                 raise ValueError('Compiled loss preflight requires the production dataset')
             warm_item = loader.dataset[0]
@@ -586,7 +589,10 @@ def run(plan_path, resume=False, yield_after=None):
             warm_inputs, warm_sequence = to_device(warm_batches[0][1], warm_batches[0][2])
             memory_callback = None
             if plan.get('memory_probe'):
-                from beatfcn.train.compiled_training import probe_training_memory
+                try:
+                    from beatfcn.train.compiled_training import probe_training_memory
+                except ModuleNotFoundError:
+                    raise SystemExit('memory_probe needs beatfcn/train/compiled_training.py (retired with the P1 line)')
                 memory_settings = plan['memory_probe']
                 memory_path = ROOT/memory_settings['path']
                 if sha(memory_path) != memory_settings['sha256']:

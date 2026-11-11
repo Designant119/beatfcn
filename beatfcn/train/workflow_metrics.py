@@ -98,7 +98,8 @@ def pair_ops(d, r, *, tolerances=None, compound=False):
     dt = abs(d[0]-r[0])
     if dt > tol['window_us']:
         return None
-    same_type, same_lane = d[2] == r[2], d[3] == r[3]
+    same_type = d[2] == r[2]
+    same_lane = (d[3] == r[3]) if d[3] >= 0 else True  # -1: lane-free 草稿，不做轨道决策
     d_hold, r_hold = d[2] == 'hold', r[2] == 'hold'
     ops = []
     if dt <= tol['keep_onset_us']:
@@ -385,7 +386,7 @@ def playability(events, mode, *, min_gap_us=40_000, chord_us=1000, max_stack=4):
                     covered += 1
                 if x[2] == 'hold':
                     holds.append(x)
-        bad_lane = sum(1 for x in notes if not 0 <= x[3] < 4)
+        bad_lane = sum(1 for x in notes if x[3] != -1 and not 0 <= x[3] < 4)  # -1 合法（lane-free）
         return dict(notes=n, same_lane_overlap=dup, hold_covers_head=covered, jack_lt_40ms=jack,
                     bad_lane=bad_lane, same_lane_overlap_rate=_rate(dup, n), hold_covers_head_rate=_rate(covered, n),
                     jack_lt_40ms_rate=_rate(jack, n), jack_lt_100ms=jack100, jack_lt_100ms_rate=_rate(jack100, n),

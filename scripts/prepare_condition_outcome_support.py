@@ -71,8 +71,10 @@ def run():
                 return
         raise ValueError('Insufficient distinct observed views: ' + repr((mode, fields, count)))
 
-    for field in CONTROL_FIELDS:
-        select('mania_4k' if field == 'jack_ratio' else 'phira', (field,), 2)
+    for field in CONTROL_FIELDS:  # 单字段视图：每个字段两条 phira 观察
+        select('phira', (field,), 2)
+    # jack_ratio 退休后 mania 侧少了两条单字段视图，用 chord_ratio 补足模式配额（24 phira / 8 mania）
+    select('mania_4k', ('chord_ratio',), 2)
     for mode, count in [('phira', 10), ('mania_4k', 6)]:
         select(mode, tuple(f for f in CONTROL_FIELDS if f in MODE_FIELDS[mode]), count)
     support = defaultdict(set)

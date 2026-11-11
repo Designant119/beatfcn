@@ -17,6 +17,10 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class CloudProbeBudgetTests(unittest.TestCase):
     def setUp(self):
+        registry = [ROOT/'reports/local-portfolio-v1/mechanism-reviews-v2/index.json',
+                    ROOT/'reports/local-evolution-v1/mechanism-reviews/index.json']
+        if not any(path.exists() for path in registry):
+            raise unittest.SkipTest('mechanism-review registry artifacts are not in this checkout')
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup)
         self.path=Path(tmp.name)/'ledger.json'
         self.local=Path(tmp.name)/'local-gate.json';self.local.write_text('{"passed":true}')

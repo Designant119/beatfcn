@@ -21,7 +21,9 @@ class RelativeHeadCodecTest(unittest.TestCase):
             self.assertEqual(old.events, state.events)
             self.assertEqual(old.last_onset, state.last_onset)
         self.assertTrue(state.done)
-        self.assertEqual(sorted(state.events), sorted(events))
+        # Lane is not modelled: decoded events carry the no-lane sentinel, so compare timing/type only.
+        shape = lambda e: (e.onset_us, e.end_us, e.type)
+        self.assertEqual(sorted(shape(e) for e in state.events), sorted(shape(e) for e in events))
         seq = teacher_sequence(tokens, request)
         self.assertTrue(np.isfinite(seq['times']).all())
         self.assertTrue(seq['allowed'][np.arange(len(tokens)), seq['targets']].all())
@@ -74,14 +76,14 @@ class RelativeHeadCodecTest(unittest.TestCase):
             if not field.startswith('head_') or field == 'head_block' and value >= v.blocks:
                 self.assertEqual(a,b)
 
-    def test_invalid_subms_permission_and_lane_conflict_still_reject(self):
+    def test_invalid_subms_permission_rejects_and_lane_is_ignored(self):
         req = EventRequest('phira', 8_000_000, 9_000_000, 10_000_000)
         with self.assertRaises(ValueError):
             encode_events([E(8_000_001, 8_000_001, 'tap')],req)
+        # Lane is no longer an input: a shared lane with an incoming carry is timing context, not a conflict.
         req = EventRequest('mania_4k',8_000_000,9_000_000,10_000_000,
             known_carry=(E(1_000_000,9_000_000,'hold',0),))
-        with self.assertRaises(ValueError):
-            encode_events([E(8_100_000,8_100_000,'tap',0)],req)
+        self.roundtrip([E(8_100_000,8_100_000,'tap',0)],req)
 
     def test_hold_only_final_sample_still_disallows_zero_length_tail(self):
         req = EventRequest('phira',7_998_500,8_000_000,8_000_000,allowed_types=('hold',))
